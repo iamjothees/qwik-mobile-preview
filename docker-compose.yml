@@ -12,5 +12,18 @@ services:
       - PORT=4567
       - HOST=0.0.0.0
       - HOST_IP=${HOST_IP:-}
+      - PUBLIC_URL=${PUBLIC_URL:-}
+    networks:
+      - proxy_net
+      - qwik-preview_internal
     labels:
       - "com.qwik-preview.description=Qwik Mobile Preview LAN Relay Server"
+      - "traefik.enable=true"
+      - "traefik.http.routers.qwik-preview.rule=Host(`${PUBLIC_DOMAIN:-preview.local}`)"
+      - "traefik.http.services.qwik-preview.loadbalancer.server.port=4567"
+
+networks:
+  qwik-preview_internal:
+    driver: bridge
+  proxy_net:
+    external: true

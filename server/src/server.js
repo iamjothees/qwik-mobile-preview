@@ -214,8 +214,29 @@ const server = http.createServer(async (req, res) => {
         delete responseHeaders['content-security-policy'];
         delete responseHeaders['content-security-policy-report-only'];
 
-        res.writeHead(proxyRes.statusCode || 200, responseHeaders);
-        proxyRes.pipe(res);
+        const contentType = proxyRes.headers['content-type'] || '';
+        if (contentType.includes('text/html')) {
+          delete responseHeaders['content-length']; // length changes after base injection
+          let body = '';
+          proxyRes.setEncoding('utf8');
+          proxyRes.on('data', chunk => { body += chunk; });
+          proxyRes.on('end', () => {
+            const baseTag = `<base href="${target}">`;
+            let modified = body;
+            if (body.includes('<head>')) {
+              modified = body.replace('<head>', `<head>${baseTag}`);
+            } else if (body.includes('<head ')) {
+              modified = body.replace(/<head[^>]*>/i, `$&${baseTag}`);
+            } else {
+              modified = `${baseTag}${body}`;
+            }
+            res.writeHead(proxyRes.statusCode || 200, responseHeaders);
+            res.end(modified);
+          });
+        } else {
+          res.writeHead(proxyRes.statusCode || 200, responseHeaders);
+          proxyRes.pipe(res);
+        }
       });
 
       proxyReq.on('error', (err) => {

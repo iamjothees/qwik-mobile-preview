@@ -315,7 +315,18 @@ function loadPreview(url, notify = true) {
 
   // Show loader and set frame src
   frameLoader.classList.remove('hidden');
-  previewFrame.src = url;
+
+  // If receiver is on HTTPS (e.g. Cloudflare secured domain) and preview URL is HTTP,
+  // route through /proxy to prevent browser Mixed Content iframe blocking
+  const isHttpsOrigin = window.location.protocol === 'https:';
+  const isHttpTarget = url.startsWith('http://');
+
+  if (isHttpsOrigin && isHttpTarget) {
+    console.log('[Preview] HTTPS origin detected with HTTP target. Routing through proxy to bypass mixed-content.');
+    previewFrame.src = `/proxy?url=${encodeURIComponent(url)}`;
+  } else {
+    previewFrame.src = url;
+  }
 
   previewFrame.onload = () => {
     frameLoader.classList.add('hidden');

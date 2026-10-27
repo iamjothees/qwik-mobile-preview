@@ -51,14 +51,17 @@ export function getPrimaryLanIp(req = null) {
     return process.env.HOST_IP;
   }
 
-  // If a request was provided and Host header contains a LAN IP (not localhost or container IP)
+  // If a request was provided and Host header contains a LAN IP (not a domain or container bridge)
   if (req && req.headers && req.headers.host) {
     const hostWithoutPort = req.headers.host.split(':')[0];
+    const isIpv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostWithoutPort);
     if (
-      hostWithoutPort !== 'localhost' &&
+      isIpv4 &&
       hostWithoutPort !== '127.0.0.1' &&
       !hostWithoutPort.startsWith('172.17.') &&
-      !hostWithoutPort.startsWith('172.18.')
+      !hostWithoutPort.startsWith('172.18.') &&
+      !hostWithoutPort.startsWith('10.') && // exclude container internal networks if not physical
+      !hostWithoutPort.startsWith('192.168.16.')
     ) {
       cachedHostIp = hostWithoutPort;
       return cachedHostIp;
