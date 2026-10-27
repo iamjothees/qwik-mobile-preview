@@ -44,14 +44,34 @@ let audioContext = null;
 serverUrlEl.textContent = window.location.host;
 
 // ==========================================
-// 1. Service Worker & PWA Install Management
+// 1. Service Worker & PWA Auto-Update Management
 // ==========================================
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then((reg) => {
       console.log('[PWA] Service Worker active on scope:', reg.scope);
+
+      // Proactively check for updates on load, periodically, and on wake
+      reg.update();
+      setInterval(() => reg.update(), 60 * 60 * 1000);
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          reg.update();
+        }
+      });
     }).catch((err) => {
       console.warn('[PWA] Service Worker registration failed:', err);
+    });
+
+    // Seamless auto-reload when a new version of the app is deployed
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!refreshing) {
+        refreshing = true;
+        console.log('[PWA] New version activated, refreshing...');
+        window.location.reload();
+      }
     });
   });
 }
