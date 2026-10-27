@@ -3,3 +3,5 @@ node_modules/
 *.log
 .env
 *.zip
+PORTFOLIO_PROMPT.md
+dist/
