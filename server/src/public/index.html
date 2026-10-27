@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Qwik Preview">
+  <link rel="manifest" href="/manifest.json">
+  <title>Qwik Mobile Preview — Live Receiver</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <!-- Standby / Welcome Screen (shown when no link is loaded) -->
+  <main id="standby-screen" class="standby-container">
+    <div class="card">
+      <div class="pulse-ring">
+        <span class="icon">📱</span>
+      </div>
+      <h1 class="title">Ready for Preview</h1>
+      <p class="subtitle">Waiting for laptop push on LAN...</p>
+
+      <div class="status-pill-group">
+        <div id="ws-badge" class="badge badge-warning">
+          <span class="indicator"></span>
+          <span id="ws-status-text">Connecting...</span>
+        </div>
+        <div id="wakelock-badge" class="badge badge-inactive">
+          <span class="indicator"></span>
+          <span id="wakelock-status-text">Wake Lock: Off</span>
+        </div>
+      </div>
+
+      <div class="info-box">
+        <div class="info-row">
+          <span class="label">Laptop Server:</span>
+          <span id="server-url" class="value">Detecting...</span>
+        </div>
+        <div class="info-row">
+          <span class="label">Ready Status:</span>
+          <span class="value text-success">Standing by</span>
+        </div>
+      </div>
+
+      <p class="hint">
+        💡 <strong>Tip:</strong> Keep this page open on your desk. Click the <strong>Qwik Preview</strong> extension on your laptop to instantly project any page here!
+      </p>
+
+      <button id="btn-activate-wakelock" class="btn btn-primary">
+        ⚡ Enable Stay-Awake (Desk Mode)
+      </button>
+    </div>
+  </main>
+
+  <!-- Live Preview Viewport (Iframe Container) -->
+  <section id="viewport-container" class="viewport-container hidden">
+    <!-- Floating Minimal Action Bar -->
+    <header id="control-bar" class="control-bar">
+      <div class="bar-left">
+        <button id="btn-toggle-bar" class="icon-btn pill-btn" title="Toggle toolbar" aria-label="Toggle toolbar">
+          <span class="dot live-dot"></span>
+          <span id="bar-url-preview" class="url-text">localhost:3000</span>
+        </button>
+      </div>
+
+      <div class="bar-actions" id="bar-actions">
+        <button id="btn-refresh" class="icon-btn" title="Reload preview" aria-label="Reload preview">
+          🔄
+        </button>
+        <button id="btn-open-external" class="icon-btn" title="Open in native tab" aria-label="Open in native tab">
+          ↗️
+        </button>
+        <button id="btn-history" class="icon-btn" title="Pushed links history" aria-label="Pushed links history">
+          📜
+        </button>
+        <button id="btn-close-preview" class="icon-btn" title="Back to standby" aria-label="Back to standby">
+          ✖️
+        </button>
+      </div>
+    </header>
+
+    <!-- The actual live web preview -->
+    <iframe
+      id="preview-frame"
+      class="preview-frame"
+      sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
+      allow="camera; microphone; geolocation"
+      title="Mobile Preview">
+    </iframe>
+
+    <!-- Loading spinner overlay during page navigation -->
+    <div id="frame-loader" class="frame-loader hidden">
+      <div class="spinner"></div>
+    </div>
+  </section>
+
+  <!-- History Modal -->
+  <dialog id="history-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Recent Pushed Links</h3>
+        <button id="btn-close-modal" class="close-btn">&times;</button>
+      </div>
+      <div id="history-list" class="history-list">
+        <p class="empty-state">No preview history yet.</p>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast hidden">
+    <span id="toast-message">Preview updated!</span>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

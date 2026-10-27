@@ -1,0 +1,23 @@
+{
+  "name": "qwik-mobile-preview-server",
+  "version": "1.0.0",
+  "description": "LAN relay server & mobile receiver for 1-click mobile preview",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "keywords": [
+    "mobile-preview",
+    "lan",
+    "docker",
+    "developer-tools"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "ws": "^8.18.0"
+  }
+}
