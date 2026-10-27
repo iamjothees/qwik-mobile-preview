@@ -151,6 +151,74 @@ body, html {
   background: #64748b;
 }
 
+/* Install Banner */
+.install-banner {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(6, 182, 212, 0.15) 100%);
+  border: 1px solid rgba(6, 182, 212, 0.35);
+  border-radius: 16px;
+  padding: 12px 14px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.install-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.install-icon {
+  font-size: 24px;
+}
+
+.install-text strong {
+  display: block;
+  font-size: 13px;
+  color: #fff;
+}
+
+.install-text p {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.btn-install {
+  width: auto;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-cyan) 100%);
+  color: #fff;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);
+}
+
+.ios-install-guide {
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px dashed rgba(6, 182, 212, 0.4);
+  border-radius: 14px;
+  padding: 10px 14px;
+  margin-bottom: 20px;
+  font-size: 12px;
+  color: #e2e8f0;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.share-icon {
+  display: inline-block;
+  padding: 1px 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  font-weight: bold;
+}
+
 .info-box {
   background: rgba(15, 23, 42, 0.6);
   border-radius: 14px;

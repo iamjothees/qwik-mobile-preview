@@ -8,12 +8,18 @@ const wsStatusText = document.getElementById('ws-status-text');
 const wakelockBadge = document.getElementById('wakelock-badge');
 const wakelockStatusText = document.getElementById('wakelock-status-text');
 const serverUrlEl = document.getElementById('server-url');
+const deskModeStatus = document.getElementById('desk-mode-status');
 const barUrlPreview = document.getElementById('bar-url-preview');
 const controlBar = document.getElementById('control-bar');
 const toast = document.getElementById('toast');
 const toastMessage = document.getElementById('toast-message');
 const historyModal = document.getElementById('history-modal');
 const historyList = document.getElementById('history-list');
+
+// Install UI Elements
+const installBanner = document.getElementById('install-banner');
+const btnInstallApp = document.getElementById('btn-install-app');
+const iosInstallGuide = document.getElementById('ios-install-guide');
 
 // Buttons
 const btnActivateWakeLock = document.getElementById('btn-activate-wakelock');
@@ -31,13 +37,81 @@ let ws = null;
 let reconnectTimer = null;
 let reconnectAttempts = 0;
 let barCollapseTimer = null;
+let deferredPrompt = null;
+let audioContext = null;
 
 // Display current server address
 serverUrlEl.textContent = window.location.host;
 
 // ==========================================
-// 1. Screen Wake Lock API ("Always Ready")
+// 1. Service Worker & PWA Install Management
 // ==========================================
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').then((reg) => {
+      console.log('[PWA] Service Worker active on scope:', reg.scope);
+    }).catch((err) => {
+      console.warn('[PWA] Service Worker registration failed:', err);
+    });
+  });
+}
+
+// Capture Chrome / Android PWA install prompt
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  console.log('[PWA] Install prompt captured');
+  if (installBanner) {
+    installBanner.classList.remove('hidden');
+  }
+});
+
+if (btnInstallApp) {
+  btnInstallApp.addEventListener('click', async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`[PWA] Install outcome: ${outcome}`);
+    deferredPrompt = null;
+    if (installBanner) installBanner.classList.add('hidden');
+  });
+}
+
+window.addEventListener('appinstalled', () => {
+  console.log('[PWA] Application installed');
+  showToast('🎉 Installed! Ready 24/7 on Home Screen');
+  if (installBanner) installBanner.classList.add('hidden');
+  if (iosInstallGuide) iosInstallGuide.classList.add('hidden');
+  activate247DeskMode();
+});
+
+// Check if running in Standalone (PWA) Mode or iOS
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+const isIos = /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+if (isStandalone) {
+  console.log('[PWA] Running as Standalone Installed App');
+  if (installBanner) installBanner.classList.add('hidden');
+  if (iosInstallGuide) iosInstallGuide.classList.add('hidden');
+  // Auto-activate 24/7 mode when installed app is launched
+  setTimeout(activate247DeskMode, 500);
+} else if (isIos && iosInstallGuide) {
+  iosInstallGuide.classList.remove('hidden');
+}
+
+// ==========================================
+// 2. 24/7 Desk Mode (Wake Lock + Audio Keep-Alive)
+// ==========================================
+async function activate247DeskMode() {
+  await requestWakeLock();
+  startSilentAudioKeepAlive();
+
+  if (deskModeStatus) {
+    deskModeStatus.textContent = '24/7 Active';
+    deskModeStatus.className = 'value text-success';
+  }
+}
+
 async function requestWakeLock() {
   if ('wakeLock' in navigator) {
     try {
@@ -62,35 +136,73 @@ function updateWakeLockUI(isActive) {
   if (isActive) {
     wakelockBadge.className = 'badge badge-success';
     wakelockStatusText.textContent = 'Stay-Awake: ON';
-    btnActivateWakeLock.textContent = '⚡ Stay-Awake Active';
-    btnActivateWakeLock.style.opacity = '0.7';
+    btnActivateWakeLock.textContent = '⚡ 24/7 Desk Mode: Active';
+    btnActivateWakeLock.style.opacity = '0.75';
+    if (deskModeStatus) {
+      deskModeStatus.textContent = '24/7 Active';
+      deskModeStatus.className = 'value text-success';
+    }
   } else {
     wakelockBadge.className = 'badge badge-inactive';
     wakelockStatusText.textContent = 'Stay-Awake: Off';
-    btnActivateWakeLock.textContent = '⚡ Enable Stay-Awake (Desk Mode)';
+    btnActivateWakeLock.textContent = '⚡ Activate 24/7 Desk Mode (Always Awake)';
     btnActivateWakeLock.style.opacity = '1';
+    if (deskModeStatus) {
+      deskModeStatus.textContent = 'Tap to activate';
+      deskModeStatus.className = 'value text-warning';
+    }
   }
 }
 
-// Re-acquire Wake Lock when user switches back to the tab
+// Silent Audio Keep-Alive: prevents mobile OS from suspending WebSockets in background
+function startSilentAudioKeepAlive() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    if (!audioContext) {
+      audioContext = new AudioCtx();
+    }
+    if (audioContext.state === 'suspended') {
+      audioContext.resume();
+    }
+    // Generate 1-second silent buffer loop
+    const buffer = audioContext.createBuffer(1, audioContext.sampleRate, audioContext.sampleRate);
+    const source = audioContext.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    source.connect(audioContext.destination);
+    source.start();
+    console.log('[Keep-Alive] Audio background keep-alive loop running.');
+  } catch (err) {
+    console.warn('[Keep-Alive] Audio loop error:', err);
+  }
+}
+
+// Re-acquire Wake Lock & check connection when tab/app gains visibility
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'visible') {
     if (!wakeLockSentinel || wakeLockSentinel.released) {
       await requestWakeLock();
     }
-    // Catch-up check when waking up
+    if (audioContext && audioContext.state === 'suspended') {
+      audioContext.resume();
+    }
+    // Catch-up check for any missed previews
     checkLatestPreview();
+    // Reconnect socket if dropped
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      connectWebSocket();
+    }
   }
 });
 
-btnActivateWakeLock.addEventListener('click', requestWakeLock);
-// Also trigger on first screen tap anywhere
+btnActivateWakeLock.addEventListener('click', activate247DeskMode);
 document.addEventListener('touchstart', () => {
-  if (!wakeLockSentinel) requestWakeLock();
+  if (!wakeLockSentinel) activate247DeskMode();
 }, { once: true });
 
 // ==========================================
-// 2. Persistent WebSocket Connection
+// 3. Persistent WebSocket with Heartbeat
 // ==========================================
 function connectWebSocket() {
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
@@ -110,8 +222,7 @@ function connectWebSocket() {
       updateWsUI('connected');
       reconnectAttempts = 0;
       clearTimeout(reconnectTimer);
-      // Auto-enable wakelock on connect
-      requestWakeLock();
+      if (isStandalone) activate247DeskMode();
     };
 
     ws.onmessage = (event) => {
@@ -148,6 +259,13 @@ function scheduleReconnect() {
   }, delay);
 }
 
+// Active ping every 15s to keep socket alive through NAT/firewalls
+setInterval(() => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'ping', t: Date.now() }));
+  }
+}, 15000);
+
 function updateWsUI(state) {
   if (state === 'connected') {
     wsBadge.className = 'badge badge-success';
@@ -174,7 +292,7 @@ function handleWsMessage(msg) {
 }
 
 // ==========================================
-// 3. Preview Navigation & Viewport Management
+// 4. Preview Navigation & Viewport Management
 // ==========================================
 function loadPreview(url, notify = true) {
   if (!url) return;
@@ -205,11 +323,9 @@ function loadPreview(url, notify = true) {
 
   previewFrame.onerror = () => {
     frameLoader.classList.add('hidden');
-    // If direct load fails due to X-Frame-Options, fallback to proxy
     fallbackToProxy(url);
   };
 
-  // Auto-schedule bar collapse to give full-screen view
   scheduleBarCollapse();
 }
 
@@ -237,7 +353,7 @@ function scheduleBarCollapse() {
 }
 
 // ==========================================
-// 4. Catch-up Sync on Reconnect
+// 5. Catch-up Sync on Reconnect
 // ==========================================
 async function checkLatestPreview() {
   try {
@@ -252,7 +368,7 @@ async function checkLatestPreview() {
 }
 
 // ==========================================
-// 5. User Controls & Actions
+// 6. User Controls & Actions
 // ==========================================
 btnToggleBar.addEventListener('click', () => {
   controlBar.classList.toggle('collapsed');
@@ -335,4 +451,3 @@ function escapeHtml(str) {
 
 // Initialize
 connectWebSocket();
-requestWakeLock();

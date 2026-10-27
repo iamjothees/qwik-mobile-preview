@@ -257,10 +257,14 @@ const server = http.createServer(async (req, res) => {
         res.end('Not Found');
         return;
       }
-      res.writeHead(200, {
+      const headers = {
         'Content-Type': contentType,
         'Cache-Control': 'no-cache'
-      });
+      };
+      if (pathname === '/sw.js') {
+        headers['Service-Worker-Allowed'] = '/';
+      }
+      res.writeHead(200, headers);
       res.end(content);
     });
   });

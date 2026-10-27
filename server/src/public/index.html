@@ -4,9 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#0f172a">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Qwik Preview">
+  <meta name="apple-mobile-web-app-title" content="QwikPreview">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" sizes="512x512" href="/icons/icon-512.png">
   <link rel="manifest" href="/manifest.json">
   <title>Qwik Mobile Preview — Live Receiver</title>
   <link rel="stylesheet" href="/styles.css">
@@ -21,6 +26,7 @@
       <h1 class="title">Ready for Preview</h1>
       <p class="subtitle">Waiting for laptop push on LAN...</p>
 
+      <!-- Status Pills -->
       <div class="status-pill-group">
         <div id="ws-badge" class="badge badge-warning">
           <span class="indicator"></span>
@@ -32,23 +38,40 @@
         </div>
       </div>
 
+      <!-- Install Prompt Banner (Android/Chrome beforeinstallprompt) -->
+      <div id="install-banner" class="install-banner hidden">
+        <div class="install-banner-content">
+          <span class="install-icon">📲</span>
+          <div class="install-text">
+            <strong>Install Mobile App</strong>
+            <p>Run fullscreen & ready 24/7</p>
+          </div>
+        </div>
+        <button id="btn-install-app" class="btn btn-install">Install App</button>
+      </div>
+
+      <!-- iOS Install Guide -->
+      <div id="ios-install-guide" class="ios-install-guide hidden">
+        <p>📲 <strong>Install on iPhone:</strong> Tap the <span class="share-icon">⎋</span> (Share) button in Safari, then tap <strong>"Add to Home Screen"</strong>.</p>
+      </div>
+
       <div class="info-box">
         <div class="info-row">
-          <span class="label">Laptop Server:</span>
+          <span class="label">Relay Hub:</span>
           <span id="server-url" class="value">Detecting...</span>
         </div>
         <div class="info-row">
-          <span class="label">Ready Status:</span>
-          <span class="value text-success">Standing by</span>
+          <span class="label">24/7 Standby:</span>
+          <span id="desk-mode-status" class="value text-warning">Tap to activate</span>
         </div>
       </div>
 
       <p class="hint">
-        💡 <strong>Tip:</strong> Keep this page open on your desk. Click the <strong>Qwik Preview</strong> extension on your laptop to instantly project any page here!
+        💡 <strong>Tip:</strong> Keep this app on your desk stand. Click the extension on your laptop to push any page in 1 click!
       </p>
 
       <button id="btn-activate-wakelock" class="btn btn-primary">
-        ⚡ Enable Stay-Awake (Desk Mode)
+        ⚡ Activate 24/7 Desk Mode (Always Awake)
       </button>
     </div>
   </main>
