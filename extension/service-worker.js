@@ -78,19 +78,17 @@ async function pushTabToMobile(tab) {
     manualIp: ''
   });
 
+  const cleanServer = (serverUrl || DEFAULT_SERVER_URL).trim().replace(/\/+$/, '');
+
   showBadge('...', '#3b82f6', null, tab.id);
 
   try {
     // 1. Resolve LAN IP for localhost conversion:
-    // If user set an explicit manual IP, use it.
-    // If relay server runs on localhost, query server for local interface IP.
-    // If relay server runs on a remote homelab machine, leave undefined:
-    // the homelab server automatically detects the laptop's IP from the incoming request socket!
     let lanIp = manualIp;
-    const isLocalServer = serverUrl.includes('localhost') || serverUrl.includes('127.0.0.1');
+    const isLocalServer = cleanServer.includes('localhost') || cleanServer.includes('127.0.0.1');
     if (!lanIp && isLocalServer) {
       try {
-        const ipRes = await fetch(`${serverUrl}/api/ip`, { signal: AbortSignal.timeout(2000) });
+        const ipRes = await fetch(`${cleanServer}/api/ip`, { signal: AbortSignal.timeout(2000) });
         if (ipRes.ok) {
           const ipData = await ipRes.json();
           lanIp = ipData.primaryIp;
@@ -101,7 +99,7 @@ async function pushTabToMobile(tab) {
     }
 
     // 2. Dispatch push to server
-    const pushRes = await fetch(`${serverUrl}/api/push`, {
+    const pushRes = await fetch(`${cleanServer}/api/push`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -110,7 +108,7 @@ async function pushTabToMobile(tab) {
         lanIp: lanIp || undefined,
         source: 'extension'
       }),
-      signal: AbortSignal.timeout(3000)
+      signal: AbortSignal.timeout(4000)
     });
 
     if (!pushRes.ok) {
@@ -132,7 +130,7 @@ async function pushTabToMobile(tab) {
   } catch (err) {
     console.error('[QwikPreview] Push failed:', err);
     showBadge('!', '#ef4444', 3500, tab.id);
-    notify('Push Failed', `Could not reach relay server at ${serverUrl}. Is Docker running?`);
+    notify('Push Failed', `Could not reach relay server at ${cleanServer}: ${err.message || 'Error'}`);
   }
 }
 

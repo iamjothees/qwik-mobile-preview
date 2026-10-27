@@ -37,29 +37,48 @@ async function loadSettings() {
     manualIp: ''
   });
 
-  currentServerUrl = settings.serverUrl;
-  inputServerUrl.value = settings.serverUrl;
+  currentServerUrl = (settings.serverUrl || 'http://localhost:4567').trim().replace(/\/+$/, '');
+  inputServerUrl.value = currentServerUrl;
   selectClickBehavior.value = settings.clickBehavior;
   currentLanIp = settings.manualIp || null;
 }
 
-// Fetch Active Tab
+// Fetch Active Tab (smartly skips chrome internal pages if opened in options page)
 async function loadActiveTab() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  currentTab = tab;
-  if (!tab || !tab.url) {
-    lanUrlInput.value = 'No active webpage';
+  const tabs = await chrome.tabs.query({ currentWindow: true });
+  let activeTab = tabs.find(t => t.active);
+
+  // If currently active tab is an internal page (like chrome://extensions), find the last web tab
+  if (activeTab && isInternalUrl(activeTab.url)) {
+    const webTab = tabs.find(t => t.url && !isInternalUrl(t.url));
+    if (webTab) {
+      activeTab = webTab;
+    }
+  }
+
+  currentTab = activeTab;
+  if (!activeTab || !activeTab.url) {
+    lanUrlInput.value = 'No active webpage found';
     return;
   }
 
   resolveAndDisplayUrl();
 }
 
+function isInternalUrl(url) {
+  if (!url) return true;
+  return url.startsWith('chrome://') ||
+         url.startsWith('edge://') ||
+         url.startsWith('about:') ||
+         url.startsWith('chrome-extension://');
+}
+
 // Query Relay Server Status & IP
 async function checkServerStatus() {
+  const cleanServer = (currentServerUrl || '').trim().replace(/\/+$/, '');
   try {
-    const res = await fetch(`${currentServerUrl}/api/status`, { signal: AbortSignal.timeout(1500) });
-    if (!res.ok) throw new Error('Status error');
+    const res = await fetch(`${cleanServer}/api/status`, { signal: AbortSignal.timeout(2000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const statusData = await res.json();
     serverPort = statusData.serverPort || 4567;
@@ -69,12 +88,11 @@ async function checkServerStatus() {
     serverStatusText.textContent = count > 0 ? `Online (${count} ready)` : 'Online (0 phones)';
 
     // Update laptop IP if not manually forced
-    const isLocalServer = currentServerUrl.includes('localhost') || currentServerUrl.includes('127.0.0.1');
+    const isLocalServer = cleanServer.includes('localhost') || cleanServer.includes('127.0.0.1');
     if (!currentLanIp) {
       if (isLocalServer && statusData.primaryIp) {
         currentLanIp = statusData.primaryIp;
-      } else if (!isLocalServer && statusData.callerIp) {
-        // If server is on a remote homelab machine, the callerIp is this laptop's LAN IP
+      } else if (!isLocalServer && statusData.callerIp && !statusData.callerIp.startsWith('172.')) {
         currentLanIp = statusData.callerIp;
       }
       resolveAndDisplayUrl();
@@ -83,9 +101,10 @@ async function checkServerStatus() {
     // Populate network interfaces dropdown
     loadNetworkInterfaces();
 
-    // Update receiver URL text (mobile connects to the relay server host)
+    // Update receiver URL text
     updateReceiverUrlDisplay(statusData.primaryIp);
   } catch (err) {
+    console.warn('[QwikPreview] Status check failed:', err);
     serverStatusPill.className = 'status-pill status-offline';
     serverStatusText.textContent = 'Server Offline';
     updateReceiverUrlDisplay();
@@ -94,10 +113,10 @@ async function checkServerStatus() {
 
 // Populate interface dropdown from server
 async function loadNetworkInterfaces() {
+  const cleanServer = (currentServerUrl || '').trim().replace(/\/+$/, '');
   try {
-    const res = await fetch(`${currentServerUrl}/api/ip`);
+    const res = await fetch(`${cleanServer}/api/ip`);
     const data = await res.json();
-    const currentSelectVal = selectNetworkInterface.value;
 
     selectNetworkInterface.innerHTML = '<option value="auto">Auto-detect from server</option>';
     if (data.interfaces) {
@@ -157,14 +176,16 @@ function renderQrCode(text) {
 
 function updateReceiverUrlDisplay(serverIp = null) {
   try {
-    const sUrl = new URL(currentServerUrl);
-    const host = (sUrl.hostname === 'localhost' || sUrl.hostname === '127.0.0.1')
-      ? (serverIp || currentLanIp || '192.168.x.x')
-      : sUrl.hostname;
-    receiverUrlCode.textContent = `http://${host}:${serverPort}`;
-  } catch {
+    const clean = (currentServerUrl || '').trim().replace(/\/+$/, '');
+    const sUrl = new URL(clean);
+    if (sUrl.protocol === 'https:' || (sUrl.hostname !== 'localhost' && sUrl.hostname !== '127.0.0.1')) {
+      receiverUrlCode.textContent = clean;
+      return;
+    }
     const ip = serverIp || currentLanIp || '192.168.x.x';
     receiverUrlCode.textContent = `http://${ip}:${serverPort}`;
+  } catch {
+    receiverUrlCode.textContent = currentServerUrl;
   }
 }
 
@@ -173,30 +194,47 @@ btnPushNow.addEventListener('click', async () => {
   btnPushNow.textContent = 'Pushing...';
   btnPushNow.disabled = true;
 
+  const targetUrl = currentResolvedUrl || currentTab?.url;
+
+  if (!targetUrl || isInternalUrl(targetUrl)) {
+    btnPushNow.textContent = '✕ Cannot preview internal page';
+    setTimeout(() => {
+      btnPushNow.textContent = '⚡ Push to Mobile Now';
+      btnPushNow.disabled = false;
+    }, 2500);
+    showToast('Open a website or localhost tab first!');
+    return;
+  }
+
+  const cleanServer = (currentServerUrl || '').trim().replace(/\/+$/, '');
+
   try {
-    const res = await fetch(`${currentServerUrl}/api/push`, {
+    const res = await fetch(`${cleanServer}/api/push`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        url: currentTab.url,
-        title: currentTab.title || '',
+        url: targetUrl,
+        title: currentTab?.title || '',
         lanIp: currentLanIp || undefined
       })
     });
 
     if (res.ok) {
       const data = await res.json();
-      btnPushNow.textContent = '✓ Pushed to Mobile!';
+      const count = data.receiversNotified || 0;
+      btnPushNow.textContent = count > 0 ? `✓ Sent to ${count} phone(s)!` : '✓ Pushed to Server!';
       setTimeout(() => {
         btnPushNow.textContent = '⚡ Push to Mobile Now';
         btnPushNow.disabled = false;
       }, 2000);
       checkServerStatus();
     } else {
-      throw new Error('Push failed');
+      throw new Error(`Server returned HTTP ${res.status}`);
     }
   } catch (err) {
-    btnPushNow.textContent = '✕ Server unreachable';
+    console.error('[QwikPreview Push Error]', err);
+    btnPushNow.textContent = '✕ Push failed';
+    showToast(`Error: ${err.message || 'Cannot reach server'}`);
     setTimeout(() => {
       btnPushNow.textContent = '⚡ Push to Mobile Now';
       btnPushNow.disabled = false;
@@ -214,13 +252,24 @@ btnCopyUrl.addEventListener('click', () => {
 
 // Event: Open Receiver in Tab
 btnOpenReceiver.addEventListener('click', () => {
-  const ip = currentLanIp || 'localhost';
-  chrome.tabs.create({ url: `http://${ip}:${serverPort}` });
+  try {
+    const clean = (currentServerUrl || '').trim().replace(/\/+$/, '');
+    const sUrl = new URL(clean);
+    if (sUrl.protocol === 'https:' || (sUrl.hostname !== 'localhost' && sUrl.hostname !== '127.0.0.1')) {
+      chrome.tabs.create({ url: clean });
+      return;
+    }
+    const ip = currentLanIp || 'localhost';
+    chrome.tabs.create({ url: `http://${ip}:${serverPort}` });
+  } catch {
+    chrome.tabs.create({ url: currentServerUrl });
+  }
 });
 
 // Event: Save Settings
 btnSaveSettings.addEventListener('click', async () => {
-  const newServerUrl = inputServerUrl.value.trim() || 'http://localhost:4567';
+  const rawInput = inputServerUrl.value.trim() || 'http://localhost:4567';
+  const newServerUrl = rawInput.replace(/\/+$/, '');
   const newBehavior = selectClickBehavior.value;
   const newIp = selectNetworkInterface.value === 'auto' ? '' : selectNetworkInterface.value;
 
@@ -231,6 +280,7 @@ btnSaveSettings.addEventListener('click', async () => {
   });
 
   currentServerUrl = newServerUrl;
+  inputServerUrl.value = newServerUrl;
   currentLanIp = newIp || null;
 
   // Notify background service worker to update toolbar action click behavior

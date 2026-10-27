@@ -44,7 +44,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   const reqUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  const pathname = reqUrl.pathname;
+  const pathname = reqUrl.pathname.replace(/\/+/g, '/');
 
   // Track LAN IP from incoming client host headers
   getPrimaryLanIp(req);
