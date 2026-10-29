@@ -19,44 +19,27 @@
       </div>
     </header>
 
-    <!-- Main Active Preview Card -->
-    <section class="card preview-card">
-      <div class="url-info">
-        <label class="section-label">Current Tab LAN URL</label>
-        <div class="url-row">
-          <input type="text" id="lan-url-input" class="url-input" readonly value="Detecting...">
-          <button id="btn-copy-url" class="icon-btn" title="Copy URL">📋</button>
-        </div>
+    <!-- Main Mobile Pairing Card -->
+    <section class="card receiver-card">
+      <div class="receiver-header">
+        <span class="section-label">📱 Pair Mobile Device</span>
+        <button id="btn-open-receiver" class="link-btn" title="Open receiver in new tab">Open Receiver ↗</button>
       </div>
 
-      <!-- Action Button -->
-      <button id="btn-push-now" class="btn btn-primary push-btn">
-        ⚡ Push to Mobile Now
-      </button>
-
-      <!-- QR Code Fallback & Switcher -->
+      <!-- Centered Pairing QR Code -->
       <div class="qr-container">
-        <div class="qr-tabs">
-          <button id="tab-qr-tab" class="qr-tab active">Tab URL</button>
-          <button id="tab-qr-pair" class="qr-tab">Pair Phone 📲</button>
-        </div>
         <div id="qrcode-box" class="qrcode-box">
           <canvas id="qr-canvas"></canvas>
         </div>
-        <p id="qr-caption" class="qr-caption">Scan with phone camera to preview this tab</p>
+        <p class="qr-caption">Scan with phone camera to connect desk receiver</p>
       </div>
-    </section>
 
-    <!-- Mobile Receiver Info Card -->
-    <section class="card receiver-info-card">
-      <div class="receiver-header">
-        <span class="section-label">Mobile Desk Receiver</span>
-        <button id="btn-open-receiver" class="link-btn">Open Page ↗</button>
-      </div>
+      <!-- Pairing URL & Copy -->
       <div class="pairing-link-row">
         <input type="text" id="receiver-url-code" class="pair-link-input" readonly value="Detecting...">
         <button id="btn-copy-pair-link" class="icon-btn" title="Copy Mobile Link">📋</button>
       </div>
+
       <div class="pair-meta-row">
         <span>Room Key: <strong id="display-pair-key">qwik-...</strong></span>
       </div>
@@ -69,8 +52,8 @@
         <div class="form-group">
           <label for="select-click-behavior">Toolbar Icon Click:</label>
           <select id="select-click-behavior" class="form-control">
-            <option value="popup">🔍 Open Popup Dashboard (Default)</option>
-            <option value="one_click">⚡ 1-Click Push directly (No Popup)</option>
+            <option value="one_click">⚡ 1-Click Push current tab (Default)</option>
+            <option value="popup">🔍 Open this Dashboard</option>
           </select>
         </div>
 
@@ -99,8 +82,9 @@
       </div>
     </details>
 
+    <!-- Footer -->
     <footer class="footer">
-      <span>Shortcut: <kbd>Cmd+Shift+Q</kbd> or <kbd>Ctrl+Shift+Q</kbd></span>
+      <span>Push Tab: <kbd>Cmd+Shift+Q</kbd> or <kbd>Ctrl+Shift+Q</kbd></span>
     </footer>
   </div>
 

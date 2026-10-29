@@ -1,13 +1,7 @@
 // Elements
 const serverStatusPill = document.getElementById('server-status-pill');
 const serverStatusText = document.getElementById('server-status-text');
-const lanUrlInput = document.getElementById('lan-url-input');
-const btnCopyUrl = document.getElementById('btn-copy-url');
-const btnPushNow = document.getElementById('btn-push-now');
 const qrCanvas = document.getElementById('qr-canvas');
-const qrCaption = document.getElementById('qr-caption');
-const tabQrTab = document.getElementById('tab-qr-tab');
-const tabQrPair = document.getElementById('tab-qr-pair');
 
 // Receiver Card Elements
 const receiverUrlCode = document.getElementById('receiver-url-code');
@@ -25,13 +19,10 @@ const selectNetworkInterface = document.getElementById('select-network-interface
 const btnSaveSettings = document.getElementById('btn-save-settings');
 
 // State
-let currentTab = null;
-let currentResolvedUrl = null;
 let currentServerUrl = 'http://localhost:4567';
 let currentPairKey = '';
 let currentLanIp = null;
 let serverPort = 4567;
-let activeQrMode = 'tab'; // 'tab' | 'pair'
 
 // Helper: Generate Random 8-character Pairing Key
 function generatePairKey() {
@@ -43,10 +34,19 @@ function generatePairKey() {
   return result;
 }
 
-// Initialize Popup
+function isInternalBridgeIp(ip) {
+  if (!ip) return true;
+  if (ip === 'localhost' || ip === '127.0.0.1' || ip === '::1' || ip === '0.0.0.0') return true;
+  if (ip.startsWith('169.254.')) return true;
+  if (ip.startsWith('192.168.65.') || ip.startsWith('192.168.64.')) return true; // Docker Desktop Mac VM bridge
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true; // Docker container bridges
+  if (ip.startsWith('10.0.2.')) return true; // VirtualBox NAT
+  return false;
+}
+
+// Initialize Dashboard
 document.addEventListener('DOMContentLoaded', async () => {
   await loadSettings();
-  await loadActiveTab();
   await checkServerStatus();
 });
 
@@ -54,7 +54,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function loadSettings() {
   const settings = await chrome.storage.sync.get({
     serverUrl: 'http://localhost:4567',
-    clickBehavior: 'popup',
+    clickBehavior: 'one_click',
     manualIp: '',
     pairKey: ''
   });
@@ -78,67 +78,7 @@ async function loadSettings() {
   updateReceiverUrlDisplay();
 }
 
-// Fetch Active Tab (robust across popup dropdown, options page, or separate tabs)
-async function loadActiveTab() {
-  let activeTab = null;
-
-  // 1. Check active tab in last focused window
-  try {
-    const focusedTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-    if (focusedTabs.length > 0 && focusedTabs[0].url && !isInternalUrl(focusedTabs[0].url)) {
-      activeTab = focusedTabs[0];
-    }
-  } catch {}
-
-  // 2. Check active tab in current window
-  if (!activeTab) {
-    try {
-      const currentTabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (currentTabs.length > 0 && currentTabs[0].url && !isInternalUrl(currentTabs[0].url)) {
-        activeTab = currentTabs[0];
-      }
-    } catch {}
-  }
-
-  // 3. Fallback: Search all open tabs for any web page (e.g. localhost or website)
-  if (!activeTab) {
-    try {
-      const allTabs = await chrome.tabs.query({});
-      const webTabs = allTabs.filter(t => t.url && !isInternalUrl(t.url));
-      if (webTabs.length > 0) {
-        activeTab = webTabs.find(t => t.active) || webTabs[webTabs.length - 1];
-      }
-    } catch {}
-  }
-
-  currentTab = activeTab;
-  if (!activeTab || !activeTab.url) {
-    lanUrlInput.value = 'No active webpage found';
-    return;
-  }
-
-  resolveAndDisplayUrl();
-}
-
-function isInternalUrl(url) {
-  if (!url) return true;
-  return url.startsWith('chrome://') ||
-         url.startsWith('edge://') ||
-         url.startsWith('about:') ||
-         url.startsWith('chrome-extension://');
-}
-
-function isInternalBridgeIp(ip) {
-  if (!ip) return true;
-  if (ip === 'localhost' || ip === '127.0.0.1' || ip === '::1' || ip === '0.0.0.0') return true;
-  if (ip.startsWith('169.254.')) return true;
-  if (ip.startsWith('192.168.65.') || ip.startsWith('192.168.64.')) return true; // Docker Desktop Mac VM bridge / Multipass
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true; // Docker container bridges
-  if (ip.startsWith('10.0.2.')) return true;
-  return false;
-}
-
-// Query Relay Server Status & IP
+// Query Relay Server Status & Discovered Network IP
 async function checkServerStatus() {
   const cleanServer = (currentServerUrl || '').trim().replace(/\/+$/, '');
   try {
@@ -154,7 +94,7 @@ async function checkServerStatus() {
     serverStatusPill.className = 'status-pill status-online';
     serverStatusText.textContent = count > 0 ? `Online (${count} paired)` : 'Online (0 phones)';
 
-    // Determine Developer's LAN IP (excluding virtual Docker bridges)
+    // Update real physical LAN IP (excluding virtual bridges)
     if (!currentLanIp || isInternalBridgeIp(currentLanIp)) {
       if (statusData.primaryIp && !isInternalBridgeIp(statusData.primaryIp)) {
         currentLanIp = statusData.primaryIp;
@@ -168,7 +108,6 @@ async function checkServerStatus() {
           }
         } catch {}
       }
-      resolveAndDisplayUrl();
     }
 
     loadNetworkInterfaces();
@@ -199,13 +138,13 @@ async function loadNetworkInterfaces() {
       });
     }
 
-    // Ensure primary detected LAN IP is always in the dropdown list
+    // Ensure detected primary physical LAN IP is in dropdown
     if (data.primaryIp && !isInternalBridgeIp(data.primaryIp)) {
       const exists = Array.from(selectNetworkInterface.options).some(o => o.value === data.primaryIp);
       if (!exists) {
         const opt = document.createElement('option');
         opt.value = data.primaryIp;
-        opt.textContent = `${data.primaryIp} (Primary LAN / Wi-Fi)`;
+        opt.textContent = `${data.primaryIp} (Primary Wi-Fi / LAN)`;
         selectNetworkInterface.appendChild(opt);
       }
     }
@@ -216,30 +155,7 @@ async function loadNetworkInterfaces() {
   } catch {}
 }
 
-// Transform localhost/127.0.0.1 -> LAN IP
-function resolveAndDisplayUrl() {
-  if (!currentTab || !currentTab.url) return;
-
-  const rawUrl = currentTab.url;
-  const ip = currentLanIp || 'localhost';
-
-  let resolved = rawUrl;
-  try {
-    const parsed = new URL(rawUrl);
-    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
-      parsed.hostname = ip;
-      resolved = parsed.toString();
-    }
-  } catch {
-    resolved = rawUrl;
-  }
-
-  currentResolvedUrl = resolved;
-  lanUrlInput.value = resolved;
-
-  renderActiveQr();
-}
-
+// Compute the Mobile Receiver Pairing URL
 function getReceiverPairingUrl(serverIp = null) {
   try {
     const clean = (currentServerUrl || '').trim().replace(/\/+$/, '');
@@ -255,17 +171,19 @@ function getReceiverPairingUrl(serverIp = null) {
   }
 }
 
+// Update Pairing Link Display & Render QR Code
 function updateReceiverUrlDisplay(serverIp = null) {
   const pairUrl = getReceiverPairingUrl(serverIp);
   if (receiverUrlCode) receiverUrlCode.value = pairUrl;
   if (displayPairKey) displayPairKey.textContent = currentPairKey;
+  renderQrCode(pairUrl);
 }
 
 // Generate QR Code with QRCode library
 function renderQrCode(text) {
   if (typeof QRCode !== 'undefined' && qrCanvas) {
     QRCode.toCanvas(qrCanvas, text, {
-      width: 140,
+      width: 150,
       margin: 1,
       color: {
         dark: '#0f172a',
@@ -276,108 +194,6 @@ function renderQrCode(text) {
     });
   }
 }
-
-function renderActiveQr() {
-  if (activeQrMode === 'tab') {
-    if (currentResolvedUrl) renderQrCode(currentResolvedUrl);
-    if (qrCaption) qrCaption.textContent = 'Scan with phone camera to preview this tab';
-  } else {
-    const pairUrl = getReceiverPairingUrl();
-    renderQrCode(pairUrl);
-    if (qrCaption) qrCaption.textContent = 'Scan with phone once to pair with this laptop';
-  }
-}
-
-// QR Tabs Switcher
-if (tabQrTab && tabQrPair) {
-  tabQrTab.addEventListener('click', () => {
-    activeQrMode = 'tab';
-    tabQrTab.classList.add('active');
-    tabQrPair.classList.remove('active');
-    renderActiveQr();
-  });
-
-  tabQrPair.addEventListener('click', () => {
-    activeQrMode = 'pair';
-    tabQrPair.classList.add('active');
-    tabQrTab.classList.remove('active');
-    renderActiveQr();
-  });
-}
-
-// Event: Push to Mobile Now Button
-btnPushNow.addEventListener('click', async () => {
-  btnPushNow.textContent = 'Pushing...';
-  btnPushNow.disabled = true;
-
-  const targetUrl = currentResolvedUrl || currentTab?.url;
-
-  if (!targetUrl || isInternalUrl(targetUrl)) {
-    btnPushNow.textContent = '✕ Cannot preview internal page';
-    setTimeout(() => {
-      btnPushNow.textContent = '⚡ Push to Mobile Now';
-      btnPushNow.disabled = false;
-    }, 2500);
-    showToast('Open a website or localhost tab first!');
-    return;
-  }
-
-  const cleanServer = (currentServerUrl || '').trim().replace(/\/+$/, '');
-
-  try {
-    const res = await fetch(`${cleanServer}/api/push`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Pair-Key': currentPairKey
-      },
-      body: JSON.stringify({
-        url: targetUrl,
-        title: currentTab?.title || '',
-        lanIp: currentLanIp || undefined,
-        pairKey: currentPairKey
-      })
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      const count = data.receiversNotified || 0;
-      btnPushNow.textContent = count > 0 ? `✓ Sent to ${count} phone(s)!` : '✓ Pushed (0 paired phones)';
-      setTimeout(() => {
-        btnPushNow.textContent = '⚡ Push to Mobile Now';
-        btnPushNow.disabled = false;
-      }, 2000);
-      checkServerStatus();
-    } else if (res.status === 429) {
-      const data = await res.json().catch(() => ({}));
-      btnPushNow.textContent = '⏳ Rate Limited';
-      showToast(data.message || 'Push limit reached. Please wait a minute.');
-      setTimeout(() => {
-        btnPushNow.textContent = '⚡ Push to Mobile Now';
-        btnPushNow.disabled = false;
-      }, 3500);
-    } else {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || `HTTP ${res.status}`);
-    }
-  } catch (err) {
-    console.error('[QwikPreview Push Error]', err);
-    btnPushNow.textContent = '✕ Push failed';
-    showToast(`Error: ${err.message || 'Cannot reach server'}`);
-    setTimeout(() => {
-      btnPushNow.textContent = '⚡ Push to Mobile Now';
-      btnPushNow.disabled = false;
-    }, 2500);
-  }
-});
-
-// Event: Copy Tab URL
-btnCopyUrl.addEventListener('click', () => {
-  if (currentResolvedUrl) {
-    navigator.clipboard.writeText(currentResolvedUrl);
-    showToast('Copied LAN URL to clipboard!');
-  }
-});
 
 // Event: Copy Mobile Pairing Link
 if (btnCopyPairLink) {
@@ -399,6 +215,9 @@ if (btnRegenPairKey) {
   btnRegenPairKey.addEventListener('click', () => {
     const newKey = generatePairKey();
     inputPairKey.value = newKey;
+    currentPairKey = newKey;
+    displayPairKey.textContent = newKey;
+    updateReceiverUrlDisplay();
     showToast('Generated new key! Click Save to apply.');
   });
 }
@@ -430,7 +249,6 @@ btnSaveSettings.addEventListener('click', async () => {
   showToast('Settings saved!');
   updateReceiverUrlDisplay();
   await checkServerStatus();
-  resolveAndDisplayUrl();
 });
 
 function showToast(msg) {

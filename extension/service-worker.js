@@ -42,11 +42,11 @@ chrome.runtime.onInstalled.addListener(async () => {
 
 // Configure whether action click pushes directly or opens popup
 async function applyActionBehavior() {
-  const { clickBehavior } = await chrome.storage.sync.get({ clickBehavior: 'popup' });
-  if (clickBehavior === 'one_click') {
-    await chrome.action.setPopup({ popup: '' });
-  } else {
+  const { clickBehavior } = await chrome.storage.sync.get({ clickBehavior: 'one_click' });
+  if (clickBehavior === 'popup') {
     await chrome.action.setPopup({ popup: 'popup/popup.html' });
+  } else {
+    await chrome.action.setPopup({ popup: '' });
   }
 }
 
