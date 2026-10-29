@@ -47,14 +47,18 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   } else if (info.menuItemId === 'open_dashboard') {
     chrome.runtime.openOptionsPage();
   } else if (info.menuItemId === 'open_receiver_page') {
-    const { serverUrl } = await chrome.storage.sync.get({ serverUrl: DEFAULT_SERVER_URL });
+    const { serverUrl, authKey } = await chrome.storage.sync.get({ serverUrl: DEFAULT_SERVER_URL, authKey: '' });
     try {
       const res = await fetch(`${serverUrl}/api/ip`);
       const data = await res.json();
       const ip = data.primaryIp || 'localhost';
-      chrome.tabs.create({ url: `http://${ip}:${data.serverPort || 4567}` });
+      let target = `http://${ip}:${data.serverPort || 4567}`;
+      if (authKey) target += `?key=${encodeURIComponent(authKey)}`;
+      chrome.tabs.create({ url: target });
     } catch {
-      chrome.tabs.create({ url: `${serverUrl}` });
+      let target = `${serverUrl}`;
+      if (authKey) target += `?key=${encodeURIComponent(authKey)}`;
+      chrome.tabs.create({ url: target });
     }
   }
 });
@@ -73,9 +77,10 @@ async function pushTabToMobile(tab) {
     return;
   }
 
-  const { serverUrl, manualIp } = await chrome.storage.sync.get({
+  const { serverUrl, manualIp, authKey } = await chrome.storage.sync.get({
     serverUrl: DEFAULT_SERVER_URL,
-    manualIp: ''
+    manualIp: '',
+    authKey: ''
   });
 
   const cleanServer = (serverUrl || DEFAULT_SERVER_URL).trim().replace(/\/+$/, '');
@@ -101,7 +106,10 @@ async function pushTabToMobile(tab) {
     // 2. Dispatch push to server
     const pushRes = await fetch(`${cleanServer}/api/push`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authKey ? { 'X-Auth-Key': authKey } : {})
+      },
       body: JSON.stringify({
         url: tab.url,
         title: tab.title || '',
@@ -110,6 +118,12 @@ async function pushTabToMobile(tab) {
       }),
       signal: AbortSignal.timeout(4000)
     });
+
+    if (pushRes.status === 401) {
+      showBadge('🔒', '#ef4444', 3500, tab.id);
+      notify('Push Rejected: Unauthorized', 'Secret Auth Key mismatch. Open extension settings to update your AUTH_KEY.');
+      return;
+    }
 
     if (!pushRes.ok) {
       throw new Error(`Server returned HTTP ${pushRes.status}`);

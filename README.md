@@ -8,43 +8,58 @@
 [![PWA Ready](https://img.shields.io/badge/Mobile_Receiver-PWA_Ready-5A0FC8?style=for-the-badge&logo=pwa&logoColor=white)](https://github.com/iamjothees/qwik-mobile-preview)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=for-the-badge)](https://github.com/iamjothees/qwik-mobile-preview/pulls)
 
-**Preview any `localhost` app on your real mobile device in LAN in 1 click.**  
-*Zero IP typing. Zero QR code scanning. Real-time sub-50ms push. 24/7 Stay-Awake desk mode.*
+**Preview any `localhost` app on your real mobile phone in LAN in 1 click.**  
+*Stop typing `192.168.x.x:3000` on your touchscreen keyboard 50 times a day.*
 
-[Features](#-why-qwik-preview) • [Quick Start](#-quick-start) • [Architecture](#-architecture) • [Cloudflare / Homelab](#-homelab--cloudflare-tunnel-setup) • [Contributing](#-contributing)
+[Demo](#-video-demo) • [The Problem](#-the-core-problem) • [Quick Start](#-quick-start) • [Security & Auth Key](#-securing-your-relay-hub-auth_key) • [Architecture](#-architecture) • [Cloudflare / Homelab](#-homelab--cloudflare-tunnel-setup)
 
 </div>
 
 ---
 
-## 😫 The Problem It Solves
+## 📹 Video Demo
 
-Testing responsive layouts on real physical mobile hardware during local development is notoriously painful:
+<!-- Upload your video or GIF to GitHub issues/releases or docs/ and paste the URL below -->
+https://github.com/user-attachments/assets/demo-preview.mp4
 
-| The Old Way | The Friction |
-| :--- | :--- |
-| **Manual IP Typing** | Look up `ifconfig`/`ipconfig`, replace `localhost`, and type `192.168.29.10:3000/nested/path?query=1` on a touchscreen keyboard every time. |
-| **QR Code Generators** | Pick up phone, open camera, point at laptop screen, tap notification banner — repeated 50 times an hour. |
-| **Cloud Tunnels (ngrok/localtunnel)** | Account signups, bandwidth throttles, high latency, and exposes your incomplete code to the public web. |
-| **Screen Timeout** | Your phone goes to sleep every 60 seconds while you write code, forcing you to unlock it again. |
-
-### ⚡ The Qwik Preview Way
-1. Leave your mobile phone docked on a desk stand next to your laptop.
-2. Hit **`Cmd+Shift+Q`** (or click the extension icon in Chrome).
-3. **Your phone screen instantly updates in `< 50ms`**. The screen stays awake permanently on your desk stand. Zero touches required.
+> 💡 **The Workflow:** Keep your phone docked on your desk stand. Hit <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd> on your laptop. Your phone screen updates in **`< 50ms`**. The screen stays awake permanently. Zero touches required.
 
 ---
 
-## 🌟 Highlights
+## 😫 The Core Problem
+
+When testing mobile responsive layouts, touch gestures, and camera inputs during local frontend development:
+
+1. **Typing IP and port numbers on a phone keyboard is painful**: You run `ifconfig` to find your local IP, open your phone browser, and carefully type `http://192.168.29.10:3000/some/deep/route?id=42` on a touchscreen.
+2. **Every port change restarts the hassle**: Vite on `5173`, Next.js on `3000`, Rails on `3001` — each time you switch branches or projects, you have to type the IP and port all over again.
+3. **QR codes still require too much physical effort**: You have to pick up your phone, unlock it, switch to the camera app, point it at the monitor, and tap the link banner — 50+ times every work day.
+4. **Mobile screens constantly go to sleep**: After 60 seconds of coding, iOS and Android lock the screen, forcing you to unlock the phone again.
+
+---
+
+## ⚡ The Solution: Qwik Mobile Preview
+
+| Scenario | Old Way | Qwik Preview |
+| :--- | :--- | :--- |
+| **Pushing localhost to phone** | Look up IP, type `192.168.x.x:3000` on touch keyboard | **1-Click** (or `Cmd+Shift+Q`) |
+| **Latency** | 10–30 seconds of typing & checking | **< 50 milliseconds** via local WebSockets |
+| **Screen Lock** | Screen dims and locks every 60 seconds | **Always Awake** via Screen Wake Lock API |
+| **Phone Handling** | Pick up phone, point camera, tap popup | **Hands-free**: phone stays on your desk dock |
+| **Security** | Open to anyone on network | **Optional Secret `AUTH_KEY` protection** |
+
+---
+
+## 🌟 Features
 
 - **⚡ True 1-Click Instant Push**: Sub-50ms dispatch from laptop to mobile over persistent local WebSockets.
-- **🔄 Zero-Config Localhost Translation**: Automatically swaps `http://localhost:3000` with your laptop's physical LAN IP (`http://192.168.x.x:3000`).
+- **🔄 Automatic Localhost ➔ LAN IP Conversion**: Automatically swaps `http://localhost:3000` with your machine's physical network IP (`http://192.168.x.x:3000`).
 - **📱 24/7 Desk Standby Mode (PWA)**:
   - **Screen Wake Lock API**: Keeps your phone screen awake on your desk dock — no dimming or auto-locking.
-  - **Silent Audio Keep-Alive**: Prevents mobile OSes (iOS Safari & Android) from throttling background WebSockets.
-  - **Catch-up Sync**: Automatically grabs the newest pushed link the second you open the app if it was backgrounded.
+  - **Silent Audio Keep-Alive**: Prevents iOS Safari & Android Chrome from throttling background WebSockets.
+  - **Catch-up Sync**: Automatically grabs the newest pushed link the instant you reopen the app.
 - **🛡️ HTTPS Mixed-Content Bypass**: Smart reverse frame-proxy injects `<base href>` so HTTP local dev servers render inside HTTPS/Cloudflare PWAs with zero browser security errors.
-- **🐳 Multi-Arch Docker Hub Image**: Ready-to-go lightweight Node 22 Alpine container (`~50MB`) supporting `linux/amd64` and `linux/arm64` (Raspberry Pi / Apple Silicon / Mini PCs).
+- **🔒 Secret `AUTH_KEY` Protection**: Secure public homelab/Cloudflare tunnel endpoints against unauthorized pushes.
+- **🐳 Multi-Arch Docker Hub Image**: Lightweight Alpine container (`~50MB`) supporting `linux/amd64` and `linux/arm64` (Apple Silicon, Raspberry Pi, Mini PCs).
 - **🔍 Offline QR Code Fallback**: Instant offline QR generator built right into the extension popup for one-off previews on unpaired devices.
 
 ---
@@ -68,7 +83,7 @@ flowchart LR
         Receiver["Qwik Preview PWA\n(Screen Wake Lock + 24/7 Standby)"]
     end
 
-    Ext -->|"1-Click POST {url}"| API
+    Ext -->|"1-Click Push {url, X-Auth-Key}"| API
     API -->|"Broadcast"| WS
     WS -->|"Instant Event (<50ms)"| Receiver
     Receiver -->|"Loads Live View"| Dev
@@ -81,7 +96,7 @@ flowchart LR
 
 ### Step 1: Run the Relay Hub (1 Command)
 
-You can run the relay hub directly on your laptop or on any homelab machine in your local network:
+Run on your laptop or any machine on your local network:
 
 ```bash
 docker run -d \
@@ -109,8 +124,8 @@ On your mobile phone (connected to the same Wi-Fi / LAN):
    *(e.g., `http://192.168.29.10:4567` or your secured Cloudflare domain)*
 2. Tap **"⚡ Activate 24/7 Desk Mode"** to keep the screen permanently active.
 3. **Install as App (PWA)**:
-   - **Android**: Tap the **"📲 Install App"** button (or 3 dots → *Install App*).
-   - **iOS Safari**: Tap the **Share** button (⎋) → **"Add to Home Screen"**.
+   - **Android**: Tap **"📲 Install App"** (or 3 dots → *Install App*).
+   - **iOS Safari**: Tap **Share** (⎋) → **"Add to Home Screen"**.
 4. Place your phone on your desk stand.
 
 ---
@@ -134,6 +149,31 @@ On your mobile phone (connected to the same Wi-Fi / LAN):
 
 ---
 
+## 🔒 Securing Your Relay Hub (`AUTH_KEY`)
+
+When exposing your relay server to the public internet (e.g., via Cloudflare Tunnel or a VPS like `https://qwik-preview.joecodes.in`), you can protect it so only your authorized devices can push or view previews:
+
+### 1. Set `AUTH_KEY` in Docker
+
+```bash
+docker run -d \
+  --name qwik-mobile-preview \
+  -p 4567:4567 \
+  -e AUTH_KEY=your_secret_key_here \
+  iamjothees/qwik-mobile-preview:latest
+```
+
+*(Or set `AUTH_KEY=your_secret_key_here` in `docker-compose.yml`)*
+
+### 2. Connect Your Devices
+
+- **Mobile Phone**: Open `https://your-domain.com/?key=your_secret_key_here` once. The PWA saves the key in `localStorage` and cleans the address bar. (Or simply type it into the password prompt on the screen).
+- **Chrome Extension**: Open the extension popup, expand **⚙️ Preferences & Network**, and paste `your_secret_key_here` into the **Secret Auth Key** field.
+
+Any request without the valid key is rejected with `401 Unauthorized` and WebSocket code `4401`.
+
+---
+
 ## 🌐 Homelab / Cloudflare Tunnel Setup
 
 If you run a homelab server with Cloudflare Tunnel or reverse proxy (e.g. Traefik, Caddy, Nginx Proxy Manager):
@@ -147,6 +187,8 @@ If you run a homelab server with Cloudflare Tunnel or reverse proxy (e.g. Traefi
        restart: unless-stopped
        ports:
          - "4567:4567"
+       environment:
+         - AUTH_KEY=${AUTH_KEY:-}
        networks:
          - proxy_net
    networks:
@@ -154,7 +196,7 @@ If you run a homelab server with Cloudflare Tunnel or reverse proxy (e.g. Traefi
        external: true
    ```
 2. Point your Cloudflare Tunnel hostname (e.g. `https://preview.yourdomain.com`) to `http://qwik-mobile-preview:4567`.
-3. In the Chrome extension options, set **Relay Server URL** to `https://preview.yourdomain.com`.
+3. In the Chrome extension options, set **Relay Server URL** to `https://preview.yourdomain.com` (and your `AUTH_KEY`).
 4. Open `https://preview.yourdomain.com` on your phone — enjoy full native PWA installation with valid TLS!
 
 ---
@@ -168,16 +210,8 @@ If you run a homelab server with Cloudflare Tunnel or reverse proxy (e.g. Traefi
 
 **Right-Click Extension Toolbar Icon:**
 - `⚡ Push this tab to mobile`: Explicit manual push.
-- `🔍 QR Code & Settings`: View offline QR code, change LAN interfaces, or adjust click behavior.
+- `🔍 QR Code & Settings`: View offline QR code, change LAN interfaces, or enter secret Auth Key.
 - `📱 Open Mobile Receiver in Browser`: Quick link to open the receiver.
-
----
-
-## 🔒 Privacy & Security
-
-- **100% Local / Self-Hosted**: All URLs and WebSocket events are transmitted directly within your local network or to your private homelab server.
-- **Zero Analytics or Telemetry**: No third-party trackers, no cookies, no cloud telemetry.
-- **Explicit Triggers**: Tab URLs are only read when you explicitly click the action button or press the keyboard shortcut.
 
 ---
 

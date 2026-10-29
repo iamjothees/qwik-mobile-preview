@@ -11,11 +11,26 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 
 const PORT = parseInt(process.env.PORT || '4567', 10);
 const HOST = process.env.HOST || '0.0.0.0';
+const AUTH_KEY = (process.env.AUTH_KEY || '').trim();
 
 // In-memory state
 let latestPreview = null;
 const history = [];
 const MAX_HISTORY = 30;
+
+// Auth helper function
+function isAuthorized(req, reqUrl) {
+  if (!AUTH_KEY) return true; // Open access when AUTH_KEY is not set
+  const headerToken = req.headers['x-auth-key'] || req.headers['authorization'];
+  if (headerToken) {
+    const token = headerToken.startsWith('Bearer ') ? headerToken.slice(7).trim() : headerToken.trim();
+    if (token === AUTH_KEY) return true;
+  }
+  if (reqUrl && reqUrl.searchParams.get('key') === AUTH_KEY) {
+    return true;
+  }
+  return false;
+}
 
 // MIME type map for static assets
 const MIME_TYPES = {
@@ -35,7 +50,7 @@ const server = http.createServer(async (req, res) => {
   // Add CORS headers for all requests
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Auth-Key');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -64,6 +79,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       status: 'online',
+      authRequired: !!AUTH_KEY,
       connectedClients: wss.clients.size,
       primaryIp: getPrimaryLanIp(req),
       callerIp,
@@ -74,18 +90,34 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (pathname === '/api/latest' && req.method === 'GET') {
+    if (!isAuthorized(req, reqUrl)) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unauthorized: Invalid or missing AUTH_KEY' }));
+      return;
+    }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ latest: latestPreview }));
     return;
   }
 
   if (pathname === '/api/history' && req.method === 'GET') {
+    if (!isAuthorized(req, reqUrl)) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unauthorized: Invalid or missing AUTH_KEY' }));
+      return;
+    }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ history }));
     return;
   }
 
   if (pathname === '/api/push' && req.method === 'POST') {
+    if (!isAuthorized(req, reqUrl)) {
+      console.warn(`[AUTH] Unauthorized push rejected from ${req.socket.remoteAddress}`);
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unauthorized: Invalid or missing AUTH_KEY' }));
+      return;
+    }
     let body = '';
     req.on('data', chunk => { body += chunk; });
     req.on('end', () => {
@@ -296,6 +328,18 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 
 wss.on('connection', (ws, req) => {
   const clientIp = req.socket.remoteAddress;
+  const wsUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+
+  if (AUTH_KEY && !isAuthorized(req, wsUrl)) {
+    console.warn(`[WS] Unauthorized connection rejected from ${clientIp}`);
+    ws.send(JSON.stringify({
+      type: 'unauthorized',
+      message: 'Unauthorized: Missing or invalid secret Auth Key'
+    }));
+    ws.close(4401, 'Unauthorized');
+    return;
+  }
+
   console.log(`[WS] Client connected from ${clientIp}. Total connected: ${wss.clients.size}`);
 
   // Send initial handshake with current state
@@ -355,5 +399,6 @@ server.listen(PORT, HOST, () => {
   console.log(`📡 Local Laptop URL : http://localhost:${PORT}`);
   console.log(`📱 Mobile LAN URL   : http://${lanIp}:${PORT}`);
   console.log(`⚡ WebSocket Hub    : ws://${lanIp}:${PORT}/ws`);
+  console.log(`🔒 Auth Key Protection : ${AUTH_KEY ? 'ACTIVE (Protected)' : 'DISABLED (Open Access)'}`);
   console.log(`======================================================\n`);
 });

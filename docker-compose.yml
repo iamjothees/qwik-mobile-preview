@@ -13,6 +13,7 @@ services:
       - HOST=0.0.0.0
       - HOST_IP=${HOST_IP:-}
       - PUBLIC_URL=${PUBLIC_URL:-}
+      - AUTH_KEY=${AUTH_KEY:-}
     networks:
       - proxy_net
       - qwik-preview_internal

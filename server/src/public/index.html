@@ -38,6 +38,21 @@
         </div>
       </div>
 
+      <!-- Auth Key Banner (Shown if server requires authentication) -->
+      <div id="auth-banner" class="auth-banner hidden">
+        <div class="auth-banner-header">
+          <span class="auth-icon">🔒</span>
+          <div class="auth-text">
+            <strong>Access Key Protected</strong>
+            <p id="auth-banner-msg">Enter secret key to authorize this device</p>
+          </div>
+        </div>
+        <div class="auth-input-group">
+          <input type="password" id="input-auth-key" class="auth-input" placeholder="Enter secret AUTH_KEY..." autocomplete="off">
+          <button id="btn-save-auth-key" class="btn btn-auth">Connect</button>
+        </div>
+      </div>
+
       <!-- Install Prompt Banner (Android/Chrome beforeinstallprompt) -->
       <div id="install-banner" class="install-banner hidden">
         <div class="install-banner-content">

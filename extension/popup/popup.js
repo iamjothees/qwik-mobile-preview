@@ -12,6 +12,7 @@ const toast = document.getElementById('toast');
 // Settings Elements
 const selectClickBehavior = document.getElementById('select-click-behavior');
 const inputServerUrl = document.getElementById('input-server-url');
+const inputAuthKey = document.getElementById('input-auth-key');
 const selectNetworkInterface = document.getElementById('select-network-interface');
 const btnSaveSettings = document.getElementById('btn-save-settings');
 
@@ -19,6 +20,7 @@ const btnSaveSettings = document.getElementById('btn-save-settings');
 let currentTab = null;
 let currentResolvedUrl = null;
 let currentServerUrl = 'http://localhost:4567';
+let currentAuthKey = '';
 let currentLanIp = null;
 let serverPort = 4567;
 
@@ -34,11 +36,14 @@ async function loadSettings() {
   const settings = await chrome.storage.sync.get({
     serverUrl: 'http://localhost:4567',
     clickBehavior: 'one_click',
-    manualIp: ''
+    manualIp: '',
+    authKey: ''
   });
 
   currentServerUrl = (settings.serverUrl || 'http://localhost:4567').trim().replace(/\/+$/, '');
+  currentAuthKey = (settings.authKey || '').trim();
   inputServerUrl.value = currentServerUrl;
+  if (inputAuthKey) inputAuthKey.value = currentAuthKey;
   selectClickBehavior.value = settings.clickBehavior;
   currentLanIp = settings.manualIp || null;
 }
@@ -178,12 +183,12 @@ function updateReceiverUrlDisplay(serverIp = null) {
   try {
     const clean = (currentServerUrl || '').trim().replace(/\/+$/, '');
     const sUrl = new URL(clean);
-    if (sUrl.protocol === 'https:' || (sUrl.hostname !== 'localhost' && sUrl.hostname !== '127.0.0.1')) {
-      receiverUrlCode.textContent = clean;
-      return;
+    let base = clean;
+    if (sUrl.protocol !== 'https:' && (sUrl.hostname === 'localhost' || sUrl.hostname === '127.0.0.1')) {
+      const ip = serverIp || currentLanIp || '192.168.x.x';
+      base = `http://${ip}:${serverPort}`;
     }
-    const ip = serverIp || currentLanIp || '192.168.x.x';
-    receiverUrlCode.textContent = `http://${ip}:${serverPort}`;
+    receiverUrlCode.textContent = currentAuthKey ? `${base}?key=••••••` : base;
   } catch {
     receiverUrlCode.textContent = currentServerUrl;
   }
@@ -211,7 +216,10 @@ btnPushNow.addEventListener('click', async () => {
   try {
     const res = await fetch(`${cleanServer}/api/push`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(currentAuthKey ? { 'X-Auth-Key': currentAuthKey } : {})
+      },
       body: JSON.stringify({
         url: targetUrl,
         title: currentTab?.title || '',
@@ -228,6 +236,16 @@ btnPushNow.addEventListener('click', async () => {
         btnPushNow.disabled = false;
       }, 2000);
       checkServerStatus();
+    } else if (res.status === 401) {
+      btnPushNow.textContent = '✕ Unauthorized (Check Key)';
+      showToast('Relay server rejected: Auth Key mismatch!');
+      const accordion = document.querySelector('.settings-accordion');
+      if (accordion) accordion.open = true;
+      if (inputAuthKey) inputAuthKey.focus();
+      setTimeout(() => {
+        btnPushNow.textContent = '⚡ Push to Mobile Now';
+        btnPushNow.disabled = false;
+      }, 3000);
     } else {
       throw new Error(`Server returned HTTP ${res.status}`);
     }
@@ -255,12 +273,17 @@ btnOpenReceiver.addEventListener('click', () => {
   try {
     const clean = (currentServerUrl || '').trim().replace(/\/+$/, '');
     const sUrl = new URL(clean);
-    if (sUrl.protocol === 'https:' || (sUrl.hostname !== 'localhost' && sUrl.hostname !== '127.0.0.1')) {
-      chrome.tabs.create({ url: clean });
-      return;
+    let target = clean;
+    if (sUrl.protocol !== 'https:' && (sUrl.hostname === 'localhost' || sUrl.hostname === '127.0.0.1')) {
+      const ip = currentLanIp || 'localhost';
+      target = `http://${ip}:${serverPort}`;
     }
-    const ip = currentLanIp || 'localhost';
-    chrome.tabs.create({ url: `http://${ip}:${serverPort}` });
+    if (currentAuthKey) {
+      const parsedTarget = new URL(target);
+      parsedTarget.searchParams.set('key', currentAuthKey);
+      target = parsedTarget.toString();
+    }
+    chrome.tabs.create({ url: target });
   } catch {
     chrome.tabs.create({ url: currentServerUrl });
   }
@@ -272,14 +295,17 @@ btnSaveSettings.addEventListener('click', async () => {
   const newServerUrl = rawInput.replace(/\/+$/, '');
   const newBehavior = selectClickBehavior.value;
   const newIp = selectNetworkInterface.value === 'auto' ? '' : selectNetworkInterface.value;
+  const newAuthKey = inputAuthKey ? inputAuthKey.value.trim() : '';
 
   await chrome.storage.sync.set({
     serverUrl: newServerUrl,
     clickBehavior: newBehavior,
-    manualIp: newIp
+    manualIp: newIp,
+    authKey: newAuthKey
   });
 
   currentServerUrl = newServerUrl;
+  currentAuthKey = newAuthKey;
   inputServerUrl.value = newServerUrl;
   currentLanIp = newIp || null;
 

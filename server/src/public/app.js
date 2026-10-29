@@ -21,6 +21,12 @@ const installBanner = document.getElementById('install-banner');
 const btnInstallApp = document.getElementById('btn-install-app');
 const iosInstallGuide = document.getElementById('ios-install-guide');
 
+// Auth Protection Elements
+const authBanner = document.getElementById('auth-banner');
+const authBannerMsg = document.getElementById('auth-banner-msg');
+const inputAuthKey = document.getElementById('input-auth-key');
+const btnSaveAuthKey = document.getElementById('btn-save-auth-key');
+
 // Buttons
 const btnActivateWakeLock = document.getElementById('btn-activate-wakelock');
 const btnToggleBar = document.getElementById('btn-toggle-bar');
@@ -42,6 +48,66 @@ let audioContext = null;
 
 // Display current server address
 serverUrlEl.textContent = window.location.host;
+
+// ==========================================
+// Auth Key Management (Option 1 Security)
+// ==========================================
+// 1. Check if ?key= was passed in URL query params (e.g. mobile scan or deep link)
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.has('key')) {
+  const secretKey = (urlParams.get('key') || '').trim();
+  if (secretKey) {
+    localStorage.setItem('qwik_auth_key', secretKey);
+    console.log('[Auth] Secret Auth Key saved from URL query parameter.');
+  }
+  // Remove secret key from visible address bar for privacy
+  urlParams.delete('key');
+  const cleanSearch = urlParams.toString();
+  const cleanPath = window.location.pathname + (cleanSearch ? `?${cleanSearch}` : '') + window.location.hash;
+  window.history.replaceState({}, document.title, cleanPath);
+}
+
+function getStoredAuthKey() {
+  return (localStorage.getItem('qwik_auth_key') || '').trim();
+}
+
+function getAuthHeaders() {
+  const key = getStoredAuthKey();
+  return key ? { 'X-Auth-Key': key } : {};
+}
+
+function showAuthBanner(message) {
+  if (authBanner) {
+    authBanner.classList.remove('hidden');
+    if (authBannerMsg && message) authBannerMsg.textContent = message;
+    if (inputAuthKey) {
+      inputAuthKey.value = getStoredAuthKey();
+      inputAuthKey.focus();
+    }
+  }
+}
+
+function hideAuthBanner() {
+  if (authBanner) {
+    authBanner.classList.add('hidden');
+  }
+}
+
+if (btnSaveAuthKey) {
+  btnSaveAuthKey.addEventListener('click', () => {
+    const entered = (inputAuthKey.value || '').trim();
+    if (!entered) {
+      showToast('Please enter an Auth Key');
+      return;
+    }
+    localStorage.setItem('qwik_auth_key', entered);
+    showToast('Key saved! Connecting...');
+    if (ws) {
+      try { ws.close(); } catch {}
+    }
+    connectWebSocket();
+  });
+}
 
 // ==========================================
 // 1. Service Worker & PWA Auto-Update Management
@@ -229,8 +295,9 @@ function connectWebSocket() {
     return;
   }
 
+  const storedKey = getStoredAuthKey();
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}/ws`;
+  const wsUrl = `${protocol}//${window.location.host}/ws${storedKey ? `?key=${encodeURIComponent(storedKey)}` : ''}`;
 
   updateWsUI('connecting');
 
@@ -239,6 +306,7 @@ function connectWebSocket() {
 
     ws.onopen = () => {
       console.log('[WS] Connected to relay server.');
+      hideAuthBanner();
       updateWsUI('connected');
       reconnectAttempts = 0;
       clearTimeout(reconnectTimer);
@@ -254,8 +322,13 @@ function connectWebSocket() {
       }
     };
 
-    ws.onclose = () => {
-      console.warn('[WS] Connection closed.');
+    ws.onclose = (event) => {
+      console.warn('[WS] Connection closed. Code:', event.code, 'Reason:', event.reason);
+      if (event.code === 4401) {
+        updateWsUI('unauthorized');
+        showAuthBanner('Invalid or missing Auth Key. Please enter the correct key.');
+        return; // Don't infinite-loop reconnect when unauthorized
+      }
       updateWsUI('disconnected');
       scheduleReconnect();
     };
@@ -290,6 +363,9 @@ function updateWsUI(state) {
   if (state === 'connected') {
     wsBadge.className = 'badge badge-success';
     wsStatusText.textContent = 'Connected';
+  } else if (state === 'unauthorized') {
+    wsBadge.className = 'badge badge-inactive';
+    wsStatusText.textContent = 'Auth Required';
   } else if (state === 'connecting') {
     wsBadge.className = 'badge badge-warning';
     wsStatusText.textContent = 'Connecting...';
@@ -300,6 +376,11 @@ function updateWsUI(state) {
 }
 
 function handleWsMessage(msg) {
+  if (msg.type === 'unauthorized') {
+    updateWsUI('unauthorized');
+    showAuthBanner(msg.message || 'Unauthorized access. Secret key required.');
+    return;
+  }
   if (msg.type === 'init') {
     if (msg.data && msg.data.latestPreview) {
       loadPreview(msg.data.latestPreview.url, false);
@@ -388,7 +469,11 @@ function scheduleBarCollapse() {
 // ==========================================
 async function checkLatestPreview() {
   try {
-    const res = await fetch('/api/latest');
+    const res = await fetch('/api/latest', { headers: getAuthHeaders() });
+    if (res.status === 401) {
+      showAuthBanner('Invalid or missing Auth Key.');
+      return;
+    }
     const data = await res.json();
     if (data && data.latest && data.latest.url && data.latest.url !== currentPreviewUrl) {
       loadPreview(data.latest.url, true);
@@ -429,7 +514,12 @@ btnClosePreview.addEventListener('click', () => {
 
 btnHistory.addEventListener('click', async () => {
   try {
-    const res = await fetch('/api/history');
+    const res = await fetch('/api/history', { headers: getAuthHeaders() });
+    if (res.status === 401) {
+      showAuthBanner('Invalid or missing Auth Key.');
+      showToast('Unauthorized: Check Auth Key');
+      return;
+    }
     const data = await res.json();
     renderHistory(data.history || []);
     historyModal.showModal();
@@ -481,4 +571,16 @@ function escapeHtml(str) {
 }
 
 // Initialize
+checkAuthRequirement();
 connectWebSocket();
+
+async function checkAuthRequirement() {
+  try {
+    const res = await fetch('/api/status');
+    const data = await res.json();
+    if (data.authRequired && !getStoredAuthKey()) {
+      showAuthBanner('This relay is protected with a secret key. Please enter it below to connect.');
+      updateWsUI('unauthorized');
+    }
+  } catch {}
+}
