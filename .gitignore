@@ -4,4 +4,5 @@ node_modules/
 .env
 *.zip
 PORTFOLIO_PROMPT.md
+REDDIT_POST.md
 dist/
