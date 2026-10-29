@@ -34,12 +34,16 @@
         ⚡ Push to Mobile Now
       </button>
 
-      <!-- QR Code Fallback -->
+      <!-- QR Code Fallback & Switcher -->
       <div class="qr-container">
+        <div class="qr-tabs">
+          <button id="tab-qr-tab" class="qr-tab active">Tab URL</button>
+          <button id="tab-qr-pair" class="qr-tab">Pair Phone 📲</button>
+        </div>
         <div id="qrcode-box" class="qrcode-box">
           <canvas id="qr-canvas"></canvas>
         </div>
-        <p class="qr-caption">Scan with camera if mobile is not paired</p>
+        <p id="qr-caption" class="qr-caption">Scan with phone camera to preview this tab</p>
       </div>
     </section>
 
@@ -49,14 +53,18 @@
         <span class="section-label">Mobile Desk Receiver</span>
         <button id="btn-open-receiver" class="link-btn">Open Page ↗</button>
       </div>
-      <p class="receiver-desc">
-        Open <code id="receiver-url-code">http://...:4567</code> on your phone once to keep it ready on your desk for instant 1-click preview.
-      </p>
+      <div class="pairing-link-row">
+        <input type="text" id="receiver-url-code" class="pair-link-input" readonly value="Detecting...">
+        <button id="btn-copy-pair-link" class="icon-btn" title="Copy Mobile Link">📋</button>
+      </div>
+      <div class="pair-meta-row">
+        <span>Room Key: <strong id="display-pair-key">qwik-...</strong></span>
+      </div>
     </section>
 
     <!-- Settings Accordion -->
     <details class="settings-accordion">
-      <summary class="settings-summary">⚙️ Preferences & Network</summary>
+      <summary class="settings-summary">⚙️ Preferences & Pairing Key</summary>
       <div class="settings-body">
         <div class="form-group">
           <label for="select-click-behavior">Toolbar Icon Click:</label>
@@ -67,13 +75,17 @@
         </div>
 
         <div class="form-group">
-          <label for="input-server-url">Relay Server URL:</label>
-          <input type="text" id="input-server-url" class="form-control" placeholder="http://localhost:4567">
+          <label for="input-pair-key">Device Pairing Key:</label>
+          <div class="pair-input-action-row">
+            <input type="text" id="input-pair-key" class="form-control" placeholder="e.g. qwik-8x2k">
+            <button id="btn-regen-pair-key" class="btn btn-regen" title="Generate New Pairing Key">🔄 New</button>
+          </div>
+          <small class="form-hint">Only phones with this key will receive your pushed tabs.</small>
         </div>
 
         <div class="form-group">
-          <label for="input-auth-key">Secret Auth Key (Optional):</label>
-          <input type="password" id="input-auth-key" class="form-control" placeholder="Matches server AUTH_KEY">
+          <label for="input-server-url">Relay Server URL:</label>
+          <input type="text" id="input-server-url" class="form-control" placeholder="http://localhost:4567">
         </div>
 
         <div class="form-group">

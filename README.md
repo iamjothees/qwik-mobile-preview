@@ -149,28 +149,20 @@ On your mobile phone (connected to the same Wi-Fi / LAN):
 
 ---
 
-## 🔒 Securing Your Relay Hub (`AUTH_KEY`)
+## 🔒 Public Multi-Tenancy & Device Pairing Keys
 
-When exposing your relay server to the public internet (e.g., via Cloudflare Tunnel or a VPS like `https://qwik-preview.joecodes.in`), you can protect it so only your authorized devices can push or view previews:
+`qwik-mobile-preview` includes **built-in room isolation and rate limiting**, making it safe to host publicly (e.g. `https://qwik-preview.joecodes.in`) for multiple developers simultaneously:
 
-### 1. Set `AUTH_KEY` in Docker
+### 1. Zero-Config Device Pairing Keys
+- Each Chrome extension automatically generates a private pairing key (e.g., `qwik-7x8k2m`).
+- Open `https://qwik-preview.joecodes.in/?pair=qwik-7x8k2m` on your phone (or scan the **Pair Phone 📲** QR code directly in the extension popup).
+- Your laptop will **only push tabs to phones sharing your exact pairing key**. Multiple users can use the same server without cross-talk or interference.
+- Pairing sessions are ephemeral and auto-expire after 24 hours of inactivity.
 
-```bash
-docker run -d \
-  --name qwik-mobile-preview \
-  -p 4567:4567 \
-  -e AUTH_KEY=your_secret_key_here \
-  iamjothees/qwik-mobile-preview:latest
-```
-
-*(Or set `AUTH_KEY=your_secret_key_here` in `docker-compose.yml`)*
-
-### 2. Connect Your Devices
-
-- **Mobile Phone**: Open `https://your-domain.com/?key=your_secret_key_here` once. The PWA saves the key in `localStorage` and cleans the address bar. (Or simply type it into the password prompt on the screen).
-- **Chrome Extension**: Open the extension popup, expand **⚙️ Preferences & Network**, and paste `your_secret_key_here` into the **Secret Auth Key** field.
-
-Any request without the valid key is rejected with `401 Unauthorized` and WebSocket code `4401`.
+### 2. Built-in Web Security & Rate Limiting
+- **Sliding-Window Rate Limiting**: Max 20 pushes per minute per IP, max 100 API requests per minute. Returns `429 Too Many Requests` with `Retry-After`.
+- **Connection Caps**: Max 10 mobile receivers per pairing key; max 500 concurrent WebSockets across the hub.
+- **Payload & Protocol Sanitization**: Strictly allows `http://` and `https://` URLs (blocks `javascript:`, `data:`, `file:` URIs). Max payload size of 10 KB (blocks memory exhaustion).
 
 ---
 

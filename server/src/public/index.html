@@ -36,20 +36,24 @@
           <span class="indicator"></span>
           <span id="wakelock-status-text">Wake Lock: Off</span>
         </div>
+        <button id="btn-pairing-pill" class="badge badge-pair" title="Tap to view or change Pairing Key">
+          <span class="indicator"></span>
+          <span id="pairing-status-text">Key: ...</span>
+        </button>
       </div>
 
-      <!-- Auth Key Banner (Shown if server requires authentication) -->
-      <div id="auth-banner" class="auth-banner hidden">
-        <div class="auth-banner-header">
-          <span class="auth-icon">🔒</span>
-          <div class="auth-text">
-            <strong>Access Key Protected</strong>
-            <p id="auth-banner-msg">Enter secret key to authorize this device</p>
+      <!-- Pairing Key Card (Auto-populated from URL or editable) -->
+      <div id="pairing-card" class="pairing-card">
+        <div class="pairing-card-header">
+          <span class="pair-icon">🔑</span>
+          <div class="pair-header-text">
+            <strong>Device Pairing Key</strong>
+            <p id="pair-desc">Only laptop pushes with this key will appear here.</p>
           </div>
         </div>
-        <div class="auth-input-group">
-          <input type="password" id="input-auth-key" class="auth-input" placeholder="Enter secret AUTH_KEY..." autocomplete="off">
-          <button id="btn-save-auth-key" class="btn btn-auth">Connect</button>
+        <div class="pairing-input-group">
+          <input type="text" id="input-pair-key" class="pair-input" placeholder="e.g. qwik-8x2k" autocomplete="off" spellcheck="false">
+          <button id="btn-save-pair-key" class="btn btn-pair">Pair</button>
         </div>
       </div>
 

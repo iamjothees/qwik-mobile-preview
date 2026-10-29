@@ -21,11 +21,11 @@ const installBanner = document.getElementById('install-banner');
 const btnInstallApp = document.getElementById('btn-install-app');
 const iosInstallGuide = document.getElementById('ios-install-guide');
 
-// Auth Protection Elements
-const authBanner = document.getElementById('auth-banner');
-const authBannerMsg = document.getElementById('auth-banner-msg');
-const inputAuthKey = document.getElementById('input-auth-key');
-const btnSaveAuthKey = document.getElementById('btn-save-auth-key');
+// Pairing Elements
+const btnPairingPill = document.getElementById('btn-pairing-pill');
+const pairingStatusText = document.getElementById('pairing-status-text');
+const inputPairKey = document.getElementById('input-pair-key');
+const btnSavePairKey = document.getElementById('btn-save-pair-key');
 
 // Buttons
 const btnActivateWakeLock = document.getElementById('btn-activate-wakelock');
@@ -50,62 +50,71 @@ let audioContext = null;
 serverUrlEl.textContent = window.location.host;
 
 // ==========================================
-// Auth Key Management (Option 1 Security)
+// Device Pairing & Multi-Tenant Room Setup
 // ==========================================
-// 1. Check if ?key= was passed in URL query params (e.g. mobile scan or deep link)
+// Check if ?pair= or ?room= or ?key= was passed in URL query params
 const urlParams = new URLSearchParams(window.location.search);
-if (urlParams.has('key')) {
-  const secretKey = (urlParams.get('key') || '').trim();
-  if (secretKey) {
-    localStorage.setItem('qwik_auth_key', secretKey);
-    console.log('[Auth] Secret Auth Key saved from URL query parameter.');
-  }
-  // Remove secret key from visible address bar for privacy
+const paramPair = (urlParams.get('pair') || urlParams.get('room') || urlParams.get('key') || '').trim();
+if (paramPair) {
+  localStorage.setItem('qwik_pair_key', paramPair);
+  console.log('[Pairing] Saved pairing key from URL:', paramPair);
+  urlParams.delete('pair');
+  urlParams.delete('room');
   urlParams.delete('key');
   const cleanSearch = urlParams.toString();
   const cleanPath = window.location.pathname + (cleanSearch ? `?${cleanSearch}` : '') + window.location.hash;
   window.history.replaceState({}, document.title, cleanPath);
 }
 
-function getStoredAuthKey() {
-  return (localStorage.getItem('qwik_auth_key') || '').trim();
+function getStoredPairKey() {
+  return (localStorage.getItem('qwik_pair_key') || 'default').trim();
 }
 
-function getAuthHeaders() {
-  const key = getStoredAuthKey();
-  return key ? { 'X-Auth-Key': key } : {};
-}
-
-function showAuthBanner(message) {
-  if (authBanner) {
-    authBanner.classList.remove('hidden');
-    if (authBannerMsg && message) authBannerMsg.textContent = message;
-    if (inputAuthKey) {
-      inputAuthKey.value = getStoredAuthKey();
-      inputAuthKey.focus();
-    }
+function updatePairingUI(key) {
+  const currentKey = key || getStoredPairKey();
+  if (pairingStatusText) {
+    pairingStatusText.textContent = currentKey === 'default' ? 'Room: default' : `Key: ${currentKey}`;
+  }
+  if (inputPairKey) {
+    inputPairKey.value = currentKey === 'default' ? '' : currentKey;
   }
 }
 
-function hideAuthBanner() {
-  if (authBanner) {
-    authBanner.classList.add('hidden');
-  }
+// Initial UI population
+updatePairingUI();
+
+if (btnSavePairKey) {
+  btnSavePairKey.addEventListener('click', () => {
+    let entered = (inputPairKey.value || '').trim();
+    if (!entered) entered = 'default';
+    localStorage.setItem('qwik_pair_key', entered);
+    updatePairingUI(entered);
+    showToast(`Paired to room [${entered}]`);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'switch_room', pairKey: entered }));
+    } else {
+      connectWebSocket();
+    }
+    checkLatestPreview();
+  });
 }
 
-if (btnSaveAuthKey) {
-  btnSaveAuthKey.addEventListener('click', () => {
-    const entered = (inputAuthKey.value || '').trim();
-    if (!entered) {
-      showToast('Please enter an Auth Key');
-      return;
+if (btnPairingPill) {
+  btnPairingPill.addEventListener('click', () => {
+    const current = getStoredPairKey();
+    const entered = prompt('Enter Device Pairing Key from Laptop extension:', current === 'default' ? '' : current);
+    if (entered !== null) {
+      const sanitized = (entered.trim() || 'default');
+      localStorage.setItem('qwik_pair_key', sanitized);
+      updatePairingUI(sanitized);
+      showToast(`Switched to room [${sanitized}]`);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'switch_room', pairKey: sanitized }));
+      } else {
+        connectWebSocket();
+      }
+      checkLatestPreview();
     }
-    localStorage.setItem('qwik_auth_key', entered);
-    showToast('Key saved! Connecting...');
-    if (ws) {
-      try { ws.close(); } catch {}
-    }
-    connectWebSocket();
   });
 }
 
@@ -295,9 +304,9 @@ function connectWebSocket() {
     return;
   }
 
-  const storedKey = getStoredAuthKey();
+  const pairKey = getStoredPairKey();
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}/ws${storedKey ? `?key=${encodeURIComponent(storedKey)}` : ''}`;
+  const wsUrl = `${protocol}//${window.location.host}/ws?pair=${encodeURIComponent(pairKey)}`;
 
   updateWsUI('connecting');
 
@@ -305,8 +314,7 @@ function connectWebSocket() {
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
-      console.log('[WS] Connected to relay server.');
-      hideAuthBanner();
+      console.log('[WS] Connected to relay server in room:', pairKey);
       updateWsUI('connected');
       reconnectAttempts = 0;
       clearTimeout(reconnectTimer);
@@ -324,10 +332,10 @@ function connectWebSocket() {
 
     ws.onclose = (event) => {
       console.warn('[WS] Connection closed. Code:', event.code, 'Reason:', event.reason);
-      if (event.code === 4401) {
-        updateWsUI('unauthorized');
-        showAuthBanner('Invalid or missing Auth Key. Please enter the correct key.');
-        return; // Don't infinite-loop reconnect when unauthorized
+      if (event.code === 4429) {
+        showToast('Server/IP rate limit reached. Retrying soon...');
+      } else if (event.code === 4403) {
+        showToast('Room capacity reached (max 10 phones).');
       }
       updateWsUI('disconnected');
       scheduleReconnect();
@@ -363,9 +371,6 @@ function updateWsUI(state) {
   if (state === 'connected') {
     wsBadge.className = 'badge badge-success';
     wsStatusText.textContent = 'Connected';
-  } else if (state === 'unauthorized') {
-    wsBadge.className = 'badge badge-inactive';
-    wsStatusText.textContent = 'Auth Required';
   } else if (state === 'connecting') {
     wsBadge.className = 'badge badge-warning';
     wsStatusText.textContent = 'Connecting...';
@@ -376,12 +381,14 @@ function updateWsUI(state) {
 }
 
 function handleWsMessage(msg) {
-  if (msg.type === 'unauthorized') {
-    updateWsUI('unauthorized');
-    showAuthBanner(msg.message || 'Unauthorized access. Secret key required.');
+  if (msg.type === 'error') {
+    showToast(`Error: ${msg.message}`);
     return;
   }
   if (msg.type === 'init') {
+    if (msg.data && msg.data.pairKey) {
+      updatePairingUI(msg.data.pairKey);
+    }
     if (msg.data && msg.data.latestPreview) {
       loadPreview(msg.data.latestPreview.url, false);
     }
@@ -469,9 +476,12 @@ function scheduleBarCollapse() {
 // ==========================================
 async function checkLatestPreview() {
   try {
-    const res = await fetch('/api/latest', { headers: getAuthHeaders() });
-    if (res.status === 401) {
-      showAuthBanner('Invalid or missing Auth Key.');
+    const pairKey = getStoredPairKey();
+    const res = await fetch(`/api/latest?pair=${encodeURIComponent(pairKey)}`, {
+      headers: { 'X-Pair-Key': pairKey }
+    });
+    if (res.status === 429) {
+      console.warn('[Sync] Rate limited');
       return;
     }
     const data = await res.json();
@@ -514,10 +524,12 @@ btnClosePreview.addEventListener('click', () => {
 
 btnHistory.addEventListener('click', async () => {
   try {
-    const res = await fetch('/api/history', { headers: getAuthHeaders() });
-    if (res.status === 401) {
-      showAuthBanner('Invalid or missing Auth Key.');
-      showToast('Unauthorized: Check Auth Key');
+    const pairKey = getStoredPairKey();
+    const res = await fetch(`/api/history?pair=${encodeURIComponent(pairKey)}`, {
+      headers: { 'X-Pair-Key': pairKey }
+    });
+    if (res.status === 429) {
+      showToast('Rate limit: Wait a few seconds to view history');
       return;
     }
     const data = await res.json();
@@ -571,16 +583,5 @@ function escapeHtml(str) {
 }
 
 // Initialize
-checkAuthRequirement();
 connectWebSocket();
-
-async function checkAuthRequirement() {
-  try {
-    const res = await fetch('/api/status');
-    const data = await res.json();
-    if (data.authRequired && !getStoredAuthKey()) {
-      showAuthBanner('This relay is protected with a secret key. Please enter it below to connect.');
-      updateWsUI('unauthorized');
-    }
-  } catch {}
-}
+checkLatestPreview();

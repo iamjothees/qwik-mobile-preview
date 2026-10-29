@@ -1,8 +1,17 @@
 // Default relay server configuration
 const DEFAULT_SERVER_URL = 'http://localhost:4567';
 
-// Initialize context menu items
-chrome.runtime.onInstalled.addListener(() => {
+function generatePairKey() {
+  const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
+  let result = 'qwik-';
+  for (let i = 0; i < 6; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+// Initialize context menu items & ensure pairKey exists
+chrome.runtime.onInstalled.addListener(async () => {
   chrome.contextMenus.create({
     id: 'push_current_tab',
     title: '⚡ Push this tab to mobile',
@@ -20,6 +29,12 @@ chrome.runtime.onInstalled.addListener(() => {
     title: '📱 Open Mobile Receiver in Browser',
     contexts: ['action']
   });
+
+  // Ensure pairing key exists on install
+  const { pairKey } = await chrome.storage.sync.get({ pairKey: '' });
+  if (!pairKey) {
+    await chrome.storage.sync.set({ pairKey: generatePairKey() });
+  }
 
   // Apply default action behavior
   applyActionBehavior();
@@ -47,17 +62,22 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   } else if (info.menuItemId === 'open_dashboard') {
     chrome.runtime.openOptionsPage();
   } else if (info.menuItemId === 'open_receiver_page') {
-    const { serverUrl, authKey } = await chrome.storage.sync.get({ serverUrl: DEFAULT_SERVER_URL, authKey: '' });
+    let { serverUrl, pairKey } = await chrome.storage.sync.get({
+      serverUrl: DEFAULT_SERVER_URL,
+      pairKey: ''
+    });
+    if (!pairKey) {
+      pairKey = generatePairKey();
+      await chrome.storage.sync.set({ pairKey });
+    }
     try {
       const res = await fetch(`${serverUrl}/api/ip`);
       const data = await res.json();
       const ip = data.primaryIp || 'localhost';
-      let target = `http://${ip}:${data.serverPort || 4567}`;
-      if (authKey) target += `?key=${encodeURIComponent(authKey)}`;
+      const target = `http://${ip}:${data.serverPort || 4567}/?pair=${encodeURIComponent(pairKey)}`;
       chrome.tabs.create({ url: target });
     } catch {
-      let target = `${serverUrl}`;
-      if (authKey) target += `?key=${encodeURIComponent(authKey)}`;
+      const target = `${serverUrl}/?pair=${encodeURIComponent(pairKey)}`;
       chrome.tabs.create({ url: target });
     }
   }
@@ -77,18 +97,23 @@ async function pushTabToMobile(tab) {
     return;
   }
 
-  const { serverUrl, manualIp, authKey } = await chrome.storage.sync.get({
+  let { serverUrl, manualIp, pairKey } = await chrome.storage.sync.get({
     serverUrl: DEFAULT_SERVER_URL,
     manualIp: '',
-    authKey: ''
+    pairKey: ''
   });
+
+  if (!pairKey) {
+    pairKey = generatePairKey();
+    await chrome.storage.sync.set({ pairKey });
+  }
 
   const cleanServer = (serverUrl || DEFAULT_SERVER_URL).trim().replace(/\/+$/, '');
 
   showBadge('...', '#3b82f6', null, tab.id);
 
   try {
-    // 1. Resolve LAN IP for localhost conversion:
+    // 1. Resolve LAN IP for localhost conversion
     let lanIp = manualIp;
     const isLocalServer = cleanServer.includes('localhost') || cleanServer.includes('127.0.0.1');
     if (!lanIp && isLocalServer) {
@@ -103,30 +128,32 @@ async function pushTabToMobile(tab) {
       }
     }
 
-    // 2. Dispatch push to server
+    // 2. Dispatch push to server with Pair Key
     const pushRes = await fetch(`${cleanServer}/api/push`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(authKey ? { 'X-Auth-Key': authKey } : {})
+        'X-Pair-Key': pairKey
       },
       body: JSON.stringify({
         url: tab.url,
         title: tab.title || '',
         lanIp: lanIp || undefined,
+        pairKey: pairKey,
         source: 'extension'
       }),
       signal: AbortSignal.timeout(4000)
     });
 
-    if (pushRes.status === 401) {
-      showBadge('🔒', '#ef4444', 3500, tab.id);
-      notify('Push Rejected: Unauthorized', 'Secret Auth Key mismatch. Open extension settings to update your AUTH_KEY.');
+    if (pushRes.status === 429) {
+      showBadge('⌛', '#f59e0b', 3500, tab.id);
+      notify('Push Rate Limited', 'Please wait a minute before pushing more links.');
       return;
     }
 
     if (!pushRes.ok) {
-      throw new Error(`Server returned HTTP ${pushRes.status}`);
+      const errData = await pushRes.json().catch(() => ({}));
+      throw new Error(errData.error || `HTTP ${pushRes.status}`);
     }
 
     const result = await pushRes.json();
@@ -136,15 +163,15 @@ async function pushTabToMobile(tab) {
     showBadge('✓', '#10b981', 2500, tab.id);
 
     const message = count > 0
-      ? `Sent to ${count} active mobile screen(s):\n${result.pushedUrl}`
-      : `Queued on server:\n${result.pushedUrl}`;
+      ? `Sent to ${count} active phone(s) [${pairKey}]:\n${result.pushedUrl}`
+      : `Sent to room [${pairKey}] (0 phones active):\n${result.pushedUrl}`;
 
     notify('⚡ Preview Pushed to Mobile', message);
 
   } catch (err) {
     console.error('[QwikPreview] Push failed:', err);
     showBadge('!', '#ef4444', 3500, tab.id);
-    notify('Push Failed', `Could not reach relay server at ${cleanServer}: ${err.message || 'Error'}`);
+    notify('Push Failed', `Could not reach relay server: ${err.message || 'Error'}`);
   }
 }
 
