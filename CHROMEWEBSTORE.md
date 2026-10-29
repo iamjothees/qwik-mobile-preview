@@ -23,7 +23,7 @@ Qwik Mobile Preview lets web developers instantly preview any localhost or activ
 Say goodbye to manually looking up your laptop's Wi-Fi IP address, typing lengthy URLs with query params on a mobile keyboard, or repeatedly scanning camera QR codes!
 
 ⚡ KEY FEATURES
-• True 1-Click Push: Click the toolbar icon (or hit Cmd+Shift+Q / Ctrl+Shift+Q) to instantly display the active tab on your mobile phone in under 50ms.
+• True 1-Click Push: Click the toolbar icon (or hit Option+Shift+Q / Alt+Shift+Q) to instantly display the active tab on your mobile phone in under 50ms.
 • Automatic Localhost Translation: Automatically transforms http://localhost:PORT to your machine's LAN IP (http://192.168.x.x:PORT).
 • 24/7 Desk Standby Mode: Designed to pair with the companion Mobile Receiver PWA. Uses the Screen Wake Lock API and persistent WebSockets so your docked mobile screen stays awake on your desk 24/7.
 • Instant QR Code Fallback: Built-in offline QR code generator in the popup dashboard when you need to preview on an unpaired device.
@@ -33,7 +33,7 @@ Say goodbye to manually looking up your laptop's Wi-Fi IP address, typing length
 🚀 HOW TO USE
 1. Start the companion relay server on your laptop or homelab server (docker run -d -p 4567:4567 iamjothees/qwik-mobile-preview:latest).
 2. Open the receiver web app on your phone once (e.g. http://<YOUR_LAN_IP>:4567 or your secured domain) and place it on your desk stand.
-3. While developing on your laptop, click the Qwik Mobile Preview extension icon (or press Cmd+Shift+Q).
+3. While developing on your laptop, click the Qwik Mobile Preview extension icon (or press Option+Shift+Q).
 4. Your phone screen immediately updates to the exact page and URL!
 
 🔒 PRIVACY & PERMISSIONS

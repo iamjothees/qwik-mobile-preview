@@ -55,7 +55,7 @@ chrome.action.onClicked.addListener(async (tab) => {
   await pushTabToMobile(tab);
 });
 
-// Shortcut Hotkey Handler (Cmd+Shift+Q / Ctrl+Shift+Q)
+// Shortcut Hotkey Handler (Option+Shift+Q on Mac / Alt+Shift+Q on Win & Linux)
 chrome.commands.onCommand.addListener(async (command) => {
   if (command === 'push_current_tab') {
     const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });

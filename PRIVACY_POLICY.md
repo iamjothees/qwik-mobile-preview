@@ -24,7 +24,7 @@ This data is never sent to any external analytics, tracking, or telemetry servic
 ---
 
 ### 3. Network Transmission
-When you explicitly click the extension action icon or use the keyboard shortcut (`Cmd+Shift+Q`):
+When you explicitly click the extension action icon or use the keyboard shortcut (`Option+Shift+Q` / `Alt+Shift+Q`):
 - The extension reads the URL and title of your currently active tab.
 - If the URL is `localhost` or `127.0.0.1`, it substitutes the hostname with your machine's local network IP.
 - The URL is dispatched via an HTTP `POST` request **solely to your designated relay server** (such as your local container or private homelab server).

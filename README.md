@@ -41,7 +41,7 @@ When testing mobile responsive layouts, touch gestures, and camera inputs during
 
 | Scenario | Old Way | Qwik Preview |
 | :--- | :--- | :--- |
-| **Pushing localhost to phone** | Look up IP, type `192.168.x.x:3000` on touch keyboard | **1-Click** (or `Cmd+Shift+Q`) |
+| **Pushing localhost to phone** | Look up IP, type `192.168.x.x:3000` on touch keyboard | **1-Click** (or `Option+Shift+Q` / `Alt+Shift+Q`) |
 | **Latency** | 10–30 seconds of typing & checking | **< 50 milliseconds** via local WebSockets |
 | **Screen Lock** | Screen dims and locks every 60 seconds | **Always Awake** via Screen Wake Lock API |
 | **Phone Handling** | Pick up phone, point camera, tap popup | **Hands-free**: phone stays on your desk dock |
@@ -70,7 +70,7 @@ When testing mobile responsive layouts, touch gestures, and camera inputs during
 flowchart LR
     subgraph Laptop ["💻 Laptop (Dev Machine)"]
         Dev["Dev Server\n(localhost:3000)"]
-        Ext["Chrome Extension (MV3)\n1-Click Action / Cmd+Shift+Q"]
+        Ext["Chrome Extension (MV3)\n1-Click Action / Option+Shift+Q"]
     end
 
     subgraph Hub ["🐳 Relay Hub (Docker / Homelab / Cloudflare)"]
