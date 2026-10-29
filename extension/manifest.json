@@ -20,20 +20,21 @@
     "service_worker": "service-worker.js"
   },
   "action": {
+    "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",
       "32": "icons/icon-32.png",
       "48": "icons/icon-48.png",
       "128": "icons/icon-128.png"
     },
-    "default_title": "Qwik Mobile Preview (1-Click Push)"
+    "default_title": "Qwik Mobile Preview"
   },
   "options_ui": {
     "page": "popup/popup.html",
-    "open_in_tab": false
+    "open_in_tab": true
   },
   "commands": {
-    "_execute_action": {
+    "push_current_tab": {
       "suggested_key": {
         "default": "Ctrl+Shift+Q",
         "mac": "Command+Shift+Q"

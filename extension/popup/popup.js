@@ -54,7 +54,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function loadSettings() {
   const settings = await chrome.storage.sync.get({
     serverUrl: 'http://localhost:4567',
-    clickBehavior: 'one_click',
+    clickBehavior: 'popup',
     manualIp: '',
     pairKey: ''
   });
@@ -78,16 +78,37 @@ async function loadSettings() {
   updateReceiverUrlDisplay();
 }
 
-// Fetch Active Tab
+// Fetch Active Tab (robust across popup dropdown, options page, or separate tabs)
 async function loadActiveTab() {
-  const tabs = await chrome.tabs.query({ currentWindow: true });
-  let activeTab = tabs.find(t => t.active);
+  let activeTab = null;
 
-  if (activeTab && isInternalUrl(activeTab.url)) {
-    const webTab = tabs.find(t => t.url && !isInternalUrl(t.url));
-    if (webTab) {
-      activeTab = webTab;
+  // 1. Check active tab in last focused window
+  try {
+    const focusedTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (focusedTabs.length > 0 && focusedTabs[0].url && !isInternalUrl(focusedTabs[0].url)) {
+      activeTab = focusedTabs[0];
     }
+  } catch {}
+
+  // 2. Check active tab in current window
+  if (!activeTab) {
+    try {
+      const currentTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (currentTabs.length > 0 && currentTabs[0].url && !isInternalUrl(currentTabs[0].url)) {
+        activeTab = currentTabs[0];
+      }
+    } catch {}
+  }
+
+  // 3. Fallback: Search all open tabs for any web page (e.g. localhost or website)
+  if (!activeTab) {
+    try {
+      const allTabs = await chrome.tabs.query({});
+      const webTabs = allTabs.filter(t => t.url && !isInternalUrl(t.url));
+      if (webTabs.length > 0) {
+        activeTab = webTabs.find(t => t.active) || webTabs[webTabs.length - 1];
+      }
+    } catch {}
   }
 
   currentTab = activeTab;
@@ -107,6 +128,16 @@ function isInternalUrl(url) {
          url.startsWith('chrome-extension://');
 }
 
+function isInternalBridgeIp(ip) {
+  if (!ip) return true;
+  if (ip === 'localhost' || ip === '127.0.0.1' || ip === '::1' || ip === '0.0.0.0') return true;
+  if (ip.startsWith('169.254.')) return true;
+  if (ip.startsWith('192.168.65.') || ip.startsWith('192.168.64.')) return true; // Docker Desktop Mac VM bridge / Multipass
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true; // Docker container bridges
+  if (ip.startsWith('10.0.2.')) return true;
+  return false;
+}
+
 // Query Relay Server Status & IP
 async function checkServerStatus() {
   const cleanServer = (currentServerUrl || '').trim().replace(/\/+$/, '');
@@ -123,12 +154,19 @@ async function checkServerStatus() {
     serverStatusPill.className = 'status-pill status-online';
     serverStatusText.textContent = count > 0 ? `Online (${count} paired)` : 'Online (0 phones)';
 
-    const isLocalServer = cleanServer.includes('localhost') || cleanServer.includes('127.0.0.1');
-    if (!currentLanIp) {
-      if (isLocalServer && statusData.primaryIp) {
+    // Determine Developer's LAN IP (excluding virtual Docker bridges)
+    if (!currentLanIp || isInternalBridgeIp(currentLanIp)) {
+      if (statusData.primaryIp && !isInternalBridgeIp(statusData.primaryIp)) {
         currentLanIp = statusData.primaryIp;
-      } else if (!isLocalServer && statusData.callerIp && !statusData.callerIp.startsWith('172.')) {
+      } else if (statusData.callerIp && !isInternalBridgeIp(statusData.callerIp)) {
         currentLanIp = statusData.callerIp;
+      } else {
+        try {
+          const sHost = new URL(cleanServer).hostname;
+          if (/^(\d{1,3}\.){3}\d{1,3}$/.test(sHost) && !isInternalBridgeIp(sHost)) {
+            currentLanIp = sHost;
+          }
+        } catch {}
       }
       resolveAndDisplayUrl();
     }
@@ -153,12 +191,25 @@ async function loadNetworkInterfaces() {
     selectNetworkInterface.innerHTML = '<option value="auto">Auto-detect from server</option>';
     if (data.interfaces) {
       data.interfaces.forEach(iface => {
+        if (isInternalBridgeIp(iface.address)) return;
         const opt = document.createElement('option');
         opt.value = iface.address;
         opt.textContent = `${iface.address} (${iface.interface})`;
         selectNetworkInterface.appendChild(opt);
       });
     }
+
+    // Ensure primary detected LAN IP is always in the dropdown list
+    if (data.primaryIp && !isInternalBridgeIp(data.primaryIp)) {
+      const exists = Array.from(selectNetworkInterface.options).some(o => o.value === data.primaryIp);
+      if (!exists) {
+        const opt = document.createElement('option');
+        opt.value = data.primaryIp;
+        opt.textContent = `${data.primaryIp} (Primary LAN / Wi-Fi)`;
+        selectNetworkInterface.appendChild(opt);
+      }
+    }
+
     if (currentLanIp) {
       selectNetworkInterface.value = currentLanIp;
     }

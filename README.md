@@ -201,8 +201,8 @@ If you run a homelab server with Cloudflare Tunnel or reverse proxy (e.g. Traefi
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd> *(Win/Linux)* | Push active tab to mobile instantly |
 
 **Right-Click Extension Toolbar Icon:**
-- `⚡ Push this tab to mobile`: Explicit manual push.
-- `🔍 QR Code & Settings`: View offline QR code, change LAN interfaces, or enter secret Auth Key.
+- `⚡ Push this tab to mobile`: Explicit manual push of current tab.
+- `📱 Mobile Preview Dashboard`: Open popup dashboard, pairing QR code, or settings.
 - `📱 Open Mobile Receiver in Browser`: Quick link to open the receiver.
 
 ---

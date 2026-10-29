@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
-import { getLocalInterfaces, getPrimaryLanIp, setHostIp } from './network.js';
+import { getLocalInterfaces, getPrimaryLanIp, setHostIp, isInternalBridgeIp } from './network.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -320,16 +320,20 @@ const server = http.createServer(async (req, res) => {
         }
 
         // Determine target LAN IP for localhost replacement
-        const isCallerLan = clientIp &&
-          clientIp !== '127.0.0.1' &&
-          clientIp !== '::1' &&
-          clientIp !== 'localhost' &&
-          !clientIp.startsWith('172.17.') &&
-          !clientIp.startsWith('172.18.');
+        const isCallerRealLan = clientIp &&
+          !isInternalBridgeIp(clientIp) &&
+          !clientIp.startsWith('127.');
 
-        const lanIp = data.lanIp || (isCallerLan ? clientIp : getPrimaryLanIp(req));
-        if (data.lanIp) {
-          setHostIp(data.lanIp);
+        const primaryIp = getPrimaryLanIp(req);
+        let lanIp = data.lanIp;
+        if (!lanIp || lanIp === 'localhost' || isInternalBridgeIp(lanIp)) {
+          lanIp = (!isInternalBridgeIp(primaryIp) && primaryIp !== '127.0.0.1')
+            ? primaryIp
+            : (isCallerRealLan ? clientIp : '127.0.0.1');
+        }
+
+        if (lanIp && !isInternalBridgeIp(lanIp)) {
+          setHostIp(lanIp);
         }
 
         // Convert localhost/127.0.0.1 to LAN IP
