@@ -144,8 +144,84 @@ const MIME_TYPES = {
   '.jpg': 'image/jpeg',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
-  '.webp': 'image/webp'
+  '.webp': 'image/webp',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf'
 };
+
+function getCookie(req, name) {
+  const cookieHeader = req.headers.cookie;
+  if (!cookieHeader) return null;
+  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function getProxyTargetForRequest(req, reqUrl) {
+  // 1. Direct query param on /proxy?url=...
+  if (reqUrl.searchParams.has('url')) {
+    return reqUrl.searchParams.get('url');
+  }
+
+  // 2. Check referer header from an iframe preview
+  const referer = req.headers.referer || req.headers.referrer;
+  if (referer && referer.includes('/proxy')) {
+    try {
+      const refUrl = new URL(referer);
+      const targetParam = refUrl.searchParams.get('url');
+      if (targetParam) return targetParam;
+    } catch {}
+  }
+
+  // 3. Check active preview session cookie
+  const cookieTarget = getCookie(req, 'qwik_proxy_target');
+  if (cookieTarget) {
+    return cookieTarget;
+  }
+
+  return null;
+}
+
+async function proxyAssetRequest(req, res, targetUrl) {
+  try {
+    const parsed = new URL(targetUrl);
+    const isHttps = parsed.protocol === 'https:';
+    const httpModule = isHttps ? await import('node:https') : http;
+
+    const forwardHeaders = { ...req.headers };
+    forwardHeaders['host'] = parsed.host;
+    delete forwardHeaders['cookie']; // don't send internal proxy cookie to dev server
+    delete forwardHeaders['connection'];
+    delete forwardHeaders['keep-alive'];
+
+    const assetReq = httpModule.request(targetUrl, {
+      method: req.method || 'GET',
+      headers: forwardHeaders
+    }, (assetRes) => {
+      const responseHeaders = { ...assetRes.headers };
+      delete responseHeaders['x-frame-options'];
+      delete responseHeaders['content-security-policy'];
+      delete responseHeaders['content-security-policy-report-only'];
+
+      res.writeHead(assetRes.statusCode || 200, responseHeaders);
+      assetRes.pipe(res);
+    });
+
+    assetReq.on('error', (err) => {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end(`Asset not found: ${err.message}`);
+    });
+
+    if (req.method === 'POST' || req.method === 'PUT') {
+      req.pipe(assetReq);
+    } else {
+      assetReq.end();
+    }
+  } catch (err) {
+    res.writeHead(500, { 'Content-Type': 'text/plain' });
+    res.end('Asset proxy error');
+  }
+}
 
 // ==========================================
 // 3. HTTP Server & API Dispatch
@@ -420,11 +496,14 @@ const server = http.createServer(async (req, res) => {
       const isHttps = targetParsed.protocol === 'https:';
       const httpModule = isHttps ? await import('node:https') : http;
 
+      // Set session cookie so sub-resources (CSS, JS, fonts, images, fetch) can be routed back to target dev server
+      res.setHeader('Set-Cookie', `qwik_proxy_target=${encodeURIComponent(targetParsed.origin)}; Path=/; SameSite=Lax`);
+
       // Prepare request headers to target
       const forwardHeaders = { ...req.headers };
       forwardHeaders['host'] = targetParsed.host;
       forwardHeaders['cache-control'] = 'no-cache';
-      // Request uncompressed response so we can safely inject <base> tag without decoding binary streams
+      // Request uncompressed response so we can safely process HTML without decoding binary streams
       forwardHeaders['accept-encoding'] = 'identity';
       delete forwardHeaders['connection'];
       delete forwardHeaders['keep-alive'];
@@ -475,14 +554,13 @@ const server = http.createServer(async (req, res) => {
               }
 
               let body = buffer.toString('utf8');
-              const baseTag = `<base href="${target}">`;
-              if (body.includes('<head>')) {
-                body = body.replace('<head>', `<head>${baseTag}`);
-              } else if (body.includes('<head ')) {
-                body = body.replace(/<head[^>]*>/i, `$&${baseTag}`);
-              } else {
-                body = `${baseTag}${body}`;
-              }
+
+              // Rewrite any hardcoded localhost/LAN HTTP URLs to go through /proxy so they load over HTTPS!
+              // e.g. "http://192.168.29.10:8050/build/assets/app.css" -> "/proxy?url=http%3A%2F%2F192.168.29.10%3A8050%2Fbuild%2Fassets%2Fapp.css"
+              const lanUrlRegex = /(https?:\/\/(?:localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+)(?::\d+)?(?:[^\s"'<>]*))/g;
+              body = body.replace(lanUrlRegex, (match) => {
+                return `/proxy?url=${encodeURIComponent(match)}`;
+              });
 
               // Ensure explicit UTF-8 charset
               if (!responseHeaders['content-type'].includes('charset')) {
@@ -518,7 +596,7 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // 7. Static File Serving
+  // 7. Static File Serving & Proxied Asset Fallback
   let filePath = path.join(PUBLIC_DIR, pathname === '/' ? 'index.html' : pathname);
 
   if (!filePath.startsWith(PUBLIC_DIR)) {
@@ -529,7 +607,26 @@ const server = http.createServer(async (req, res) => {
 
   fs.stat(filePath, (err, stats) => {
     if (err || !stats.isFile()) {
-      filePath = path.join(PUBLIC_DIR, 'index.html');
+      // Check if this request came from a proxied dev app (via cookie or referer)
+      const proxyTarget = getProxyTargetForRequest(req, reqUrl);
+      if (proxyTarget) {
+        try {
+          const targetBase = new URL(proxyTarget);
+          const assetTargetUrl = new URL(reqUrl.pathname + reqUrl.search, targetBase.origin).toString();
+          return proxyAssetRequest(req, res, assetTargetUrl);
+        } catch (e) {
+          console.warn('[Asset Proxy] Failed to route asset:', e.message);
+        }
+      }
+
+      // If it's a SPA navigation without a file extension, fallback to index.html
+      if (!path.extname(pathname)) {
+        filePath = path.join(PUBLIC_DIR, 'index.html');
+      } else {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not Found');
+        return;
+      }
     }
 
     const ext = path.extname(filePath).toLowerCase();

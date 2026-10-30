@@ -1,5 +1,5 @@
 // Service Worker for Qwik Mobile Preview PWA
-const CACHE_NAME = 'qwik-preview-v1';
+const CACHE_NAME = 'qwik-preview-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -36,7 +36,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Bypass service worker for WebSocket and live API / proxy routes
+  // Bypass service worker for WebSocket, proxy, API, and non-GET requests
   if (
     url.pathname.startsWith('/api/') ||
     url.pathname.startsWith('/ws') ||
@@ -47,10 +47,18 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Non-shell requests (e.g. proxied dev server assets like /build/assets/..., /css/...)
+  // should always fetch directly from network without caching in service worker
+  const isStaticShell = STATIC_ASSETS.includes(url.pathname);
+  if (!isStaticShell) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {
-        // If response is valid, update cache in background
+        // If response is valid, update shell cache in background
         if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
           const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
