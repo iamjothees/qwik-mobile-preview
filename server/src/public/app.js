@@ -70,6 +70,52 @@ function getStoredPairKey() {
   return (localStorage.getItem('qwik_pair_key') || 'default').trim();
 }
 
+// ==========================================
+// Manual Preview Dismissal State
+// ==========================================
+const DISMISSED_KEY = 'qwik_preview_dismissed';
+
+function getDismissedPreview() {
+  try {
+    return JSON.parse(localStorage.getItem(DISMISSED_KEY) || 'null');
+  } catch {
+    return null;
+  }
+}
+
+function setDismissedPreview(url) {
+  try {
+    localStorage.setItem(DISMISSED_KEY, JSON.stringify({
+      url,
+      timestamp: Date.now()
+    }));
+  } catch {}
+}
+
+function clearDismissedPreview() {
+  try {
+    localStorage.removeItem(DISMISSED_KEY);
+  } catch {}
+}
+
+function isPreviewDismissed(preview) {
+  if (!preview) return false;
+  const targetUrl = typeof preview === 'string' ? preview : preview.url;
+  if (!targetUrl) return false;
+
+  const dismissed = getDismissedPreview();
+  if (!dismissed) return false;
+
+  if (dismissed.url === targetUrl) {
+    const previewTime = (typeof preview === 'object' && preview.timestamp) ? preview.timestamp : 0;
+    // If preview doesn't have a newer timestamp than dismissal, it stays closed
+    if (previewTime <= dismissed.timestamp) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function updatePairingUI(key) {
   const currentKey = key || getStoredPairKey();
   if (pairingStatusText) {
@@ -390,10 +436,15 @@ function handleWsMessage(msg) {
       updatePairingUI(msg.data.pairKey);
     }
     if (msg.data && msg.data.latestPreview) {
-      loadPreview(msg.data.latestPreview.url, false);
+      if (!isPreviewDismissed(msg.data.latestPreview)) {
+        loadPreview(msg.data.latestPreview.url, false);
+      } else {
+        console.log('[Init] Latest preview was closed by user, staying in standby');
+      }
     }
   } else if (msg.type === 'navigate') {
     if (msg.data && msg.data.url) {
+      clearDismissedPreview();
       loadPreview(msg.data.url, true);
     }
   }
@@ -486,7 +537,11 @@ async function checkLatestPreview() {
     }
     const data = await res.json();
     if (data && data.latest && data.latest.url && data.latest.url !== currentPreviewUrl) {
-      loadPreview(data.latest.url, true);
+      if (!isPreviewDismissed(data.latest)) {
+        loadPreview(data.latest.url, true);
+      } else {
+        console.log('[Sync] Latest preview was closed by user, staying in standby');
+      }
     }
   } catch (err) {
     console.warn('[Sync] Could not check latest preview:', err);
@@ -516,10 +571,14 @@ btnOpenExternal.addEventListener('click', () => {
 });
 
 btnClosePreview.addEventListener('click', () => {
+  if (currentPreviewUrl) {
+    setDismissedPreview(currentPreviewUrl);
+  }
   viewportContainer.classList.add('hidden');
   standbyScreen.classList.remove('hidden');
   previewFrame.src = 'about:blank';
   currentPreviewUrl = null;
+  showToast('Preview closed. Returned to standby.');
 });
 
 btnHistory.addEventListener('click', async () => {
@@ -561,6 +620,7 @@ function renderHistory(items) {
     el.addEventListener('click', () => {
       const url = el.getAttribute('data-url');
       historyModal.close();
+      clearDismissedPreview();
       loadPreview(url, true);
     });
   });

@@ -464,6 +464,27 @@ body, html {
   background: rgba(255, 255, 255, 0.2);
 }
 
+.close-preview-btn {
+  color: #ffffff;
+  background: rgba(239, 68, 68, 0.25);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  transition: all 0.2s ease;
+}
+
+.close-preview-btn svg {
+  display: block;
+  stroke: #ffffff;
+}
+
+.close-preview-btn:hover,
+.close-preview-btn:active {
+  background: rgba(239, 68, 68, 0.9);
+  color: #ffffff;
+  border-color: #ef4444;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
+  transform: scale(1.05);
+}
+
 /* Spinner */
 .frame-loader {
   position: absolute;
@@ -535,9 +556,18 @@ body, html {
 .close-btn {
   background: transparent;
   border: none;
-  color: var(--text-secondary);
-  font-size: 24px;
+  color: #94a3b8;
+  font-size: 26px;
+  line-height: 1;
   cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.close-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .history-list {
