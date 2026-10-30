@@ -5,4 +5,5 @@ node_modules/
 *.zip
 PORTFOLIO_PROMPT.md
 REDDIT_POST.md
+LINKEDIN_POST.md
 dist/
