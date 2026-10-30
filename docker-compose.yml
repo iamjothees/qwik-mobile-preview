@@ -1,6 +1,6 @@
 services:
   qwik-preview:
-    image: iamjothees/qwik-mobile-preview:latest
+    image: qwik-mobile-preview:latest
     build:
       context: .
       dockerfile: Dockerfile

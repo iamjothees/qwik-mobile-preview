@@ -1,6 +1,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { getLocalInterfaces, getPrimaryLanIp, setHostIp, isInternalBridgeIp } from './network.js';
@@ -419,37 +420,83 @@ const server = http.createServer(async (req, res) => {
       const isHttps = targetParsed.protocol === 'https:';
       const httpModule = isHttps ? await import('node:https') : http;
 
+      // Prepare request headers to target
+      const forwardHeaders = { ...req.headers };
+      forwardHeaders['host'] = targetParsed.host;
+      forwardHeaders['cache-control'] = 'no-cache';
+      // Request uncompressed response so we can safely inject <base> tag without decoding binary streams
+      forwardHeaders['accept-encoding'] = 'identity';
+      delete forwardHeaders['connection'];
+      delete forwardHeaders['keep-alive'];
+
       const proxyReq = httpModule.request(target, {
         method: 'GET',
-        headers: {
-          ...req.headers,
-          host: targetParsed.host,
-          'cache-control': 'no-cache'
-        }
+        headers: forwardHeaders
       }, (proxyRes) => {
         const responseHeaders = { ...proxyRes.headers };
         delete responseHeaders['x-frame-options'];
         delete responseHeaders['content-security-policy'];
         delete responseHeaders['content-security-policy-report-only'];
 
-        const contentType = proxyRes.headers['content-type'] || '';
+        // Rewrite redirects so the iframe stays within the secure proxy
+        if (responseHeaders.location) {
+          try {
+            const redirectUrl = new URL(responseHeaders.location, target).toString();
+            responseHeaders.location = `/proxy?url=${encodeURIComponent(redirectUrl)}`;
+          } catch {}
+        }
+
+        const contentType = (proxyRes.headers['content-type'] || '').toLowerCase();
+        const contentEncoding = (proxyRes.headers['content-encoding'] || '').toLowerCase();
+
         if (contentType.includes('text/html')) {
           delete responseHeaders['content-length'];
-          let body = '';
-          proxyRes.setEncoding('utf8');
-          proxyRes.on('data', chunk => { body += chunk; });
+          // Collect binary chunks as raw Buffers (never call setEncoding('utf8') on compressed bytes)
+          const chunks = [];
+          proxyRes.on('data', chunk => { chunks.push(chunk); });
           proxyRes.on('end', () => {
-            const baseTag = `<base href="${target}">`;
-            let modified = body;
-            if (body.includes('<head>')) {
-              modified = body.replace('<head>', `<head>${baseTag}`);
-            } else if (body.includes('<head ')) {
-              modified = body.replace(/<head[^>]*>/i, `$&${baseTag}`);
-            } else {
-              modified = `${baseTag}${body}`;
+            try {
+              let buffer = Buffer.concat(chunks);
+
+              // If upstream server compressed response despite 'accept-encoding: identity', decompress it
+              if (contentEncoding.includes('gzip')) {
+                buffer = zlib.gunzipSync(buffer);
+                delete responseHeaders['content-encoding'];
+              } else if (contentEncoding.includes('deflate')) {
+                try {
+                  buffer = zlib.inflateSync(buffer);
+                } catch {
+                  buffer = zlib.inflateRawSync(buffer);
+                }
+                delete responseHeaders['content-encoding'];
+              } else if (contentEncoding.includes('br')) {
+                buffer = zlib.brotliDecompressSync(buffer);
+                delete responseHeaders['content-encoding'];
+              }
+
+              let body = buffer.toString('utf8');
+              const baseTag = `<base href="${target}">`;
+              if (body.includes('<head>')) {
+                body = body.replace('<head>', `<head>${baseTag}`);
+              } else if (body.includes('<head ')) {
+                body = body.replace(/<head[^>]*>/i, `$&${baseTag}`);
+              } else {
+                body = `${baseTag}${body}`;
+              }
+
+              // Ensure explicit UTF-8 charset
+              if (!responseHeaders['content-type'].includes('charset')) {
+                responseHeaders['content-type'] = 'text/html; charset=utf-8';
+              }
+
+              res.writeHead(proxyRes.statusCode || 200, responseHeaders);
+              res.end(body);
+            } catch (decompErr) {
+              console.error('[Proxy HTML Decompression Error]', decompErr);
+              delete responseHeaders['content-encoding'];
+              res.writeHead(proxyRes.statusCode || 200, responseHeaders);
+              res.end(Buffer.concat(chunks));
             }
-            res.writeHead(proxyRes.statusCode || 200, responseHeaders);
-            res.end(modified);
           });
         } else {
           res.writeHead(proxyRes.statusCode || 200, responseHeaders);
