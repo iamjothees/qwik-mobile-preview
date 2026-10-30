@@ -1,5 +1,5 @@
 // Service Worker for Qwik Mobile Preview PWA
-const CACHE_NAME = 'qwik-preview-v2';
+const CACHE_NAME = 'qwik-preview-v3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

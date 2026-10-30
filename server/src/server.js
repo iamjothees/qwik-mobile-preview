@@ -182,9 +182,43 @@ function getProxyTargetForRequest(req, reqUrl) {
   return null;
 }
 
+/**
+ * Resolves upstream target URL for proxying.
+ * When running inside Docker on macOS/Linux/Windows, network traffic from container
+ * to host machine cannot route via the host's physical LAN IP (e.g. 192.168.x.x)
+ * or 127.0.0.1 due to VM bridge loopback restrictions.
+ * In Docker, host machine dev servers must be contacted via host.docker.internal.
+ */
+function resolveUpstreamTarget(targetUrl) {
+  try {
+    const parsed = new URL(targetUrl);
+    const isDocker = fs.existsSync('/.dockerenv') || Boolean(process.env.DOCKER_CONTAINER);
+
+    if (isDocker) {
+      const cleanHostIp = (process.env.HOST_IP || '').replace(/^https?:\/\//, '').split(':')[0].trim();
+      const primaryLan = (getPrimaryLanIp() || '').replace(/^https?:\/\//, '').split(':')[0].trim();
+
+      const isHostAddress =
+        parsed.hostname === 'localhost' ||
+        parsed.hostname === '127.0.0.1' ||
+        parsed.hostname === '0.0.0.0' ||
+        (cleanHostIp && parsed.hostname === cleanHostIp) ||
+        (primaryLan && parsed.hostname === primaryLan);
+
+      if (isHostAddress) {
+        const upstream = new URL(targetUrl);
+        upstream.hostname = 'host.docker.internal';
+        return upstream.toString();
+      }
+    }
+  } catch {}
+  return targetUrl;
+}
+
 async function proxyAssetRequest(req, res, targetUrl) {
   try {
     const parsed = new URL(targetUrl);
+    const upstreamUrl = resolveUpstreamTarget(targetUrl);
     const isHttps = parsed.protocol === 'https:';
     const httpModule = isHttps ? await import('node:https') : http;
 
@@ -194,7 +228,7 @@ async function proxyAssetRequest(req, res, targetUrl) {
     delete forwardHeaders['connection'];
     delete forwardHeaders['keep-alive'];
 
-    const assetReq = httpModule.request(targetUrl, {
+    const assetReq = httpModule.request(upstreamUrl, {
       method: req.method || 'GET',
       headers: forwardHeaders
     }, (assetRes) => {
@@ -493,6 +527,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
+      const upstreamUrl = resolveUpstreamTarget(target);
       const isHttps = targetParsed.protocol === 'https:';
       const httpModule = isHttps ? await import('node:https') : http;
 
@@ -508,7 +543,7 @@ const server = http.createServer(async (req, res) => {
       delete forwardHeaders['connection'];
       delete forwardHeaders['keep-alive'];
 
-      const proxyReq = httpModule.request(target, {
+      const proxyReq = httpModule.request(upstreamUrl, {
         method: 'GET',
         headers: forwardHeaders
       }, (proxyRes) => {

@@ -2,7 +2,12 @@ services:
   qwik-preview:
     container_name: qwik-mobile-preview-prod
     image: iamjothees/qwik-mobile-preview:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${PORT:-5567}:4567"
     environment:
@@ -24,6 +29,8 @@ services:
       - "com.centurylinklabs.watchtower.enable=true"
 
   watchtower:
+    profiles:
+      - watchtower
     image: containrrr/watchtower
     container_name: qwik-preview-watchtower
     restart: unless-stopped
@@ -31,6 +38,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ~/.docker/config.json:/config.json:ro
     environment:
+      - DOCKER_API_VERSION=1.44
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_INCLUDE_STOPPED=true
       - WATCHTOWER_REVIVE_STOPPED=true

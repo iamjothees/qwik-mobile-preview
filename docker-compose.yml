@@ -6,6 +6,8 @@ services:
       dockerfile: Dockerfile
     container_name: qwik-mobile-preview
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "4567:4567"
     environment:
