@@ -166,30 +166,21 @@ On your mobile phone (connected to the same Wi-Fi / LAN):
 
 ---
 
-## 🌐 Homelab / Cloudflare Tunnel Setup
+## 🌐 Production Deployment (Homelab / Cloudflare Tunnel / VPS)
 
-If you run a homelab server with Cloudflare Tunnel or reverse proxy (e.g. Traefik, Caddy, Nginx Proxy Manager):
+For production deployment (e.g. at `qwik-preview.joecodes.in`), use the provided **`docker-compose.prod.yml`** and **`.env.production`**:
 
-1. Connect the service to your proxy network in `docker-compose.yml`:
-   ```yaml
-   services:
-     qwik-preview:
-       image: iamjothees/qwik-mobile-preview:latest
-       container_name: qwik-mobile-preview
-       restart: unless-stopped
-       ports:
-         - "4567:4567"
-       environment:
-         - AUTH_KEY=${AUTH_KEY:-}
-       networks:
-         - proxy_net
-   networks:
-     proxy_net:
-       external: true
+1. Copy `.env.production` to `.env` on your server:
+   ```bash
+   cp .env.production .env
    ```
-2. Point your Cloudflare Tunnel hostname (e.g. `https://preview.yourdomain.com`) to `http://qwik-mobile-preview:4567`.
-3. In the Chrome extension options, set **Relay Server URL** to `https://preview.yourdomain.com` (and your `AUTH_KEY`).
-4. Open `https://preview.yourdomain.com` on your phone — enjoy full native PWA installation with valid TLS!
+2. Start the production stack (includes Watchtower for zero-downtime auto-updates):
+   ```bash
+   docker compose -f docker-compose.prod.yml up -d
+   ```
+3. Point your Cloudflare Tunnel hostname or Traefik reverse proxy to `http://qwik-mobile-preview-prod:4567`.
+4. In the Chrome extension options, set **Relay Server URL** to your HTTPS domain (e.g., `https://qwik-preview.joecodes.in/`).
+5. Open your public domain on your phone — enjoy full native PWA installation with valid TLS and instant WebSockets!
 
 ---
 
@@ -197,8 +188,8 @@ If you run a homelab server with Cloudflare Tunnel or reverse proxy (e.g. Traefi
 
 | Shortcut | Description |
 | :--- | :--- |
-| <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd> *(Mac)* | Push active tab to mobile instantly |
-| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd> *(Win/Linux)* | Push active tab to mobile instantly |
+| <kbd>Option</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd> *(Mac)* | Push active tab to mobile instantly |
+| <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd> *(Win/Linux)* | Push active tab to mobile instantly |
 
 **Right-Click Extension Toolbar Icon:**
 - `⚡ Push this tab to mobile`: Explicit manual push of current tab.

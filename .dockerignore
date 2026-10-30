@@ -1,0 +1,27 @@
+.git
+.github
+.gitignore
+.dockerignore
+.DS_Store
+.idea/
+.vscode/
+docs/
+*.md
+
+# Local environment & secrets
+.env
+.env.*
+!.env.example
+
+# Extension files and packaging
+extension/
+dist/
+Archive.zip
+package-extension.sh
+
+# Dependencies
+node_modules/
+server/node_modules/
+
+# Local scripts
+start.sh

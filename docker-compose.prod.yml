@@ -1,0 +1,45 @@
+services:
+  qwik-preview:
+    container_name: qwik-mobile-preview-prod
+    image: iamjothees/qwik-mobile-preview:latest
+    restart: unless-stopped
+    ports:
+      - "${PORT:-4567}:4567"
+    environment:
+      - NODE_ENV=production
+      - TZ=${TZ:-Asia/Kolkata}
+      - PORT=4567
+      - HOST=0.0.0.0
+      - HOST_IP=${HOST_IP:-}
+      - PUBLIC_URL=${PUBLIC_URL:-https://qwik-preview.joecodes.in/}
+      - AUTH_KEY=${AUTH_KEY:-}
+    networks:
+      - qwik-preview_internal
+      - proxy_net
+    labels:
+      - "com.qwik-preview.description=Qwik Mobile Preview LAN Relay Server (Production)"
+      - "traefik.enable=true"
+      - "traefik.http.routers.qwik-preview.rule=Host(`${PUBLIC_DOMAIN:-qwik-preview.joecodes.in}`)"
+      - "traefik.http.services.qwik-preview.loadbalancer.server.port=4567"
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: qwik-preview-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ~/.docker/config.json:/config.json:ro
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_INCLUDE_STOPPED=true
+      - WATCHTOWER_REVIVE_STOPPED=true
+      - WATCHTOWER_NOTIFICATIONS=shoutrrr
+      - WATCHTOWER_NOTIFICATION_URL=${WATCHTOWER_WEBHOOK_URL:-}
+    command: --interval 60 qwik-mobile-preview-prod
+
+networks:
+  qwik-preview_internal:
+    driver: bridge
+  proxy_net:
+    external: true

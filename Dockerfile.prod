@@ -1,0 +1,32 @@
+# ==========================================
+# Production Dockerfile for Qwik Mobile Preview
+# ==========================================
+FROM node:22-alpine
+
+# Set production environment
+ENV NODE_ENV=production
+
+WORKDIR /app
+
+# Install production dependencies only (layer cached until dependencies change)
+COPY server/package*.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
+
+# Copy server application source code and web receiver assets
+COPY server/src/ ./src/
+
+# Set ownership to unprivileged node user for security
+RUN chown -R node:node /app
+
+# Switch to non-root user
+USER node
+
+# Expose server port
+EXPOSE 4567
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:4567/api/status || exit 1
+
+# Start relay server
+CMD ["node", "src/server.js"]
