@@ -179,15 +179,23 @@ function getProxyTargetForRequest(req, reqUrl) {
     return cookieTarget;
   }
 
+  // 4. Check active preview in room as fallback
+  const pairKey = getPairKeyFromReq(req, reqUrl);
+  const activeRoom = roomPreviews.get(pairKey) || roomPreviews.get('default');
+  if (activeRoom && activeRoom.url) {
+    return activeRoom.url;
+  }
+
   return null;
 }
 
 /**
  * Resolves upstream target URL for proxying.
- * When running inside Docker on macOS/Linux/Windows, network traffic from container
- * to host machine cannot route via the host's physical LAN IP (e.g. 192.168.x.x)
- * or 127.0.0.1 due to VM bridge loopback restrictions.
- * In Docker, host machine dev servers must be contacted via host.docker.internal.
+ * For explicit loopback addresses ('localhost', '127.0.0.1', '0.0.0.0', '::1'),
+ * rewrite to 'host.docker.internal' inside Docker containers.
+ * For routable LAN IPs (e.g. 192.168.x.x), DO NOT rewrite to host.docker.internal,
+ * because when running on a remote/homelab server (e.g. 192.168.29.11), the dev server
+ * is on a separate laptop (192.168.29.10) and must be contacted directly via LAN!
  */
 function resolveUpstreamTarget(targetUrl) {
   try {
@@ -195,17 +203,13 @@ function resolveUpstreamTarget(targetUrl) {
     const isDocker = fs.existsSync('/.dockerenv') || Boolean(process.env.DOCKER_CONTAINER);
 
     if (isDocker) {
-      const cleanHostIp = (process.env.HOST_IP || '').replace(/^https?:\/\//, '').split(':')[0].trim();
-      const primaryLan = (getPrimaryLanIp() || '').replace(/^https?:\/\//, '').split(':')[0].trim();
-
-      const isHostAddress =
+      const isLoopback =
         parsed.hostname === 'localhost' ||
         parsed.hostname === '127.0.0.1' ||
         parsed.hostname === '0.0.0.0' ||
-        (cleanHostIp && parsed.hostname === cleanHostIp) ||
-        (primaryLan && parsed.hostname === primaryLan);
+        parsed.hostname === '::1';
 
-      if (isHostAddress) {
+      if (isLoopback) {
         const upstream = new URL(targetUrl);
         upstream.hostname = 'host.docker.internal';
         return upstream.toString();
